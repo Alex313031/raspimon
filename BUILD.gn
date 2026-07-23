@@ -1,0 +1,19 @@
+# Copyright (c) 2026 Alex313031
+
+# raspimon BUILD.gn file.
+
+executable("raspimon") {
+  configs += [ ":raspimon_config" ]
+
+  sources = [
+    "src/raspimon.cc"
+    "src/raspimon.h"
+  ]
+  
+  output_name = "raspimon"
+}
+
+config("raspimon_config") {
+  include_dirs = [ "./src" ]
+  cflags_cc = [ "-std=c++17", ]
+}

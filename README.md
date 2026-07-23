@@ -1,6 +1,6 @@
 # raspimon
 
-A command line hardware monitor for Raspberry Pi 3/4/5.  
+A command line hardware monitor for Raspberry Pi 2/3/4/5.  
 It displays clocks, temperatures, clock speeds, and more at a glance, refreshing periodically.
 
 ## About
