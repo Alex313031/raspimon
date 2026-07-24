@@ -6,8 +6,8 @@ executable("raspimon") {
   configs += [ ":raspimon_config" ]
 
   sources = [
-    "src/raspimon.cc"
-    "src/raspimon.h"
+    "src/raspimon.cc",
+    "src/raspimon.h",
   ]
   
   output_name = "raspimon"

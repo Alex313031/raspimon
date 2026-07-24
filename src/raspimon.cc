@@ -4,181 +4,231 @@
 
 #include "raspimon.h"
 
-// Default refresh delay (1 second)
-unsigned long kDefaultDelay = 1000UL;
-
-// Handle to the mbox char device, shared between refreshes
-static int mbox_fd = -1;
+namespace {
 
 // Whether to display temperatures in Fahrenheit (-f)
-static bool use_fahrenheit = false;
+bool use_fahrenheit = false;
 
-// Clocks queried with `measure_clock`, as {display name, clock name} pairs
-static const char *kClocks[][2] = {
+// A sensor to display, as {display label, gencmd argument}
+struct Sensor {
+  const char *label;
+  const char *arg;
+};
+
+// Clocks queried with `measure_clock`
+constexpr std::array<Sensor, 12> kClocks{{
   {"CPU", "arm"}, {"GPU", "core"}, {"h264", "h264"}, {"isp", "isp"},
   {"v3d", "v3d"}, {"uart", "uart"}, {"pwm", "pwm"}, {"emmc", "emmc"},
   {"pixel", "pixel"}, {"vec", "vec"}, {"hdmi", "hdmi"}, {"dpi", "dpi"},
-};
+}};
 
 // Voltage rails queried with `measure_volts`
-static const char *kVolts[] = {"core", "sdram_c", "sdram_i", "sdram_p"};
+constexpr std::array<Sensor, 4> kVolts{{
+  {"core", "core"}, {"sdram_c", "sdram_c"},
+  {"sdram_i", "sdram_i"}, {"sdram_p", "sdram_p"},
+}};
 
-namespace {
-  int mbox_open() {
-    // open a char device file used for communicating with kernel mbox driver
-    // first try the more restrictive interface but fall back to full if unavailable
-    const char *devices[] = {"/dev/vcio_gencmd", "/dev/vcio"};
-    for (size_t i = 0; i < sizeof devices / sizeof *devices; i++) {
-      int file_desc = open(devices[i], 0);
-      if (file_desc >= 0) {
-        return file_desc;
-      }
-    }
-    std::cerr << kAppName << ": can't open device file " << devices[1]
-              << " (are you running on a Raspberry Pi 2/3/4/5?)" << std::endl;
-    exit(-1);
+// Memory regions queried with `get_mem`
+constexpr std::array<Sensor, 2> kMem{{{"CPU", "arm"}, {"GPU", "gpu"}}};
+
+// Runs `command` via gencmd and returns the value after the '=' in the
+// response (e.g. "frequency(48)=600000000" -> "600000000")
+std::optional<std::string> query(const Mbox& mbox, const std::string& command) {
+  std::optional<std::string> response = mbox.gencmd(command);
+  if (!response) {
+    return std::nullopt;
   }
-
-  void mbox_close(int file_desc) {
-    close(file_desc);
+  const size_t eq = response->find('=');
+  if (eq == std::string::npos) {
+    return response;
   }
+  return response->substr(eq + 1);
+}
 
-  int mbox_property(int file_desc, void *buf) {
-    // use ioctl to send mbox property message
-    int ret_val = ioctl(file_desc, IOCTL_MBOX_PROPERTY, buf);
-
-    if (ret_val < 0) {
-      std::cerr << "ioctl_set_msg failed: " << ret_val << std::endl;
-    }
-    return ret_val;
+// Numeric parsers for firmware responses; std::nullopt on malformed input
+std::optional<long long> parse_int(const std::string& in) {
+  try {
+    return std::stoll(in);
+  } catch (const std::exception&) {
+    return std::nullopt;
   }
+}
 
-
-  // Runs `command` via gencmd and returns the value after the '=' in the
-  // response (e.g. "frequency(48)=600000000" -> "600000000").
-  // Returns an empty string on failure.
-  std::string query(const std::string& command) {
-    char result[MAX_STRING] = {};
-    if (gencmd(mbox_fd, command.c_str(), result, sizeof(result)) != 0) {
-      return std::string();
-    }
-    const char *eq = strchr(result, '=');
-    return eq ? std::string(eq + 1) : std::string(result);
+std::optional<double> parse_double(const std::string& in) {
+  try {
+    return std::stod(in);
+  } catch (const std::exception&) {
+    return std::nullopt;
   }
-} // namespace
+}
 
 // Prints a section header padded with dashes to a fixed width
-static void print_header(std::ostream& out, const std::string& title) {
+void print_header(std::ostream& out, const std::string& title) {
   std::string line = "--------" + title;
   line.resize(33, '-');
   out << line << "\n";
 }
 
 // Prints one "      name    : value" entry
-static void print_entry(std::ostream& out, const std::string& name,
-                        const std::string& value) {
+void print_entry(std::ostream& out, const std::string& name,
+                 const std::string& value) {
   out << "      " << std::left << std::setw(8) << name << ": " << value << "\n";
 }
 
-unsigned int gencmd(int file_desc, const char *command, char *result, int result_len) {
-  int i = 0;
-  unsigned int p[(MAX_STRING >> 2) + 7];
-  int len = strlen(command);
-  // maximum length for command or response
-  if (len + 1 >= MAX_STRING) {
-    std::cerr << "gencmd length too long: " << len << std::endl;
-    return -1;
+// Restores the cursor on Ctrl+C so the terminal is left usable.
+// Only async-signal-safe calls allowed here.
+void handle_signal(int) {
+  ssize_t ret = write(STDOUT_FILENO, "\033[?25h\n", 7);
+  (void)ret;
+  _exit(0);
+}
+
+} // namespace
+
+Mbox::Mbox() {
+  // open a char device file used for communicating with kernel mbox driver
+  // first try the more restrictive interface but fall back to full if unavailable
+  constexpr std::array<const char *, 2> kDevices{"/dev/vcio_gencmd", "/dev/vcio"};
+  for (const char *device : kDevices) {
+    fd_ = open(device, O_RDONLY);
+    if (fd_ >= 0) {
+      return;
+    }
   }
+  throw std::runtime_error(std::string(kAppName) + ": can't open device file " +
+                           kDevices.back() +
+                           " (are you running on a Raspberry Pi 2/3/4/5?)");
+}
+
+Mbox::~Mbox() {
+  close(fd_);
+}
+
+int Mbox::property(void *buf) const {
+  // use ioctl to send mbox property message
+  int ret_val = ioctl(fd_, kIoctlMboxProperty, buf);
+
+  if (ret_val < 0) {
+    std::cerr << "ioctl_set_msg failed: " << ret_val << std::endl;
+  }
+  return ret_val;
+}
+
+std::optional<std::string> Mbox::gencmd(const std::string& command) const {
+  // maximum length for command or response
+  if (command.size() + 1 >= kMaxString) {
+    std::cerr << "gencmd length too long: " << command.size() << std::endl;
+    return std::nullopt;
+  }
+
+  std::array<unsigned int, (kMaxString >> 2) + 7> p{};
+  size_t i = 0;
   p[i++] = 0; // size
   p[i++] = 0x00000000; // process request
 
-  p[i++] = GET_GENCMD_RESULT; // (the tag id)
-  p[i++] = MAX_STRING; // buffer_len
+  p[i++] = kGetGencmdResult; // (the tag id)
+  p[i++] = static_cast<unsigned int>(kMaxString); // buffer_len
   p[i++] = 0; // request_len (set to response length)
   p[i++] = 0; // error response
 
-  memcpy(p + i, command, len + 1);
-  i += MAX_STRING >> 2;
+  std::memcpy(&p[i], command.c_str(), command.size() + 1);
+  i += kMaxString >> 2;
 
   p[i++] = 0x00000000; // end tag
-  p[0] = i * sizeof *p; // actual size
+  p[0] = static_cast<unsigned int>(i * sizeof(unsigned int)); // actual size
 
-  if (mbox_property(file_desc, p) < 0) {
-    return -1;
+  if (property(p.data()) < 0) {
+    return std::nullopt;
   }
-  result[0] = 0;
-  strncat(result, (const char *)(p + 6), result_len - 1);
-
-  return p[5];
+  if (p[5] != 0) { // firmware error code
+    return std::nullopt;
+  }
+  const char *response = reinterpret_cast<const char *>(&p[6]);
+  return std::string(response, strnlen(response, kMaxString - 1));
 }
 
-bool get_info() {
+bool get_info(const Mbox& mbox) {
   std::ostringstream out;
-  char buf[32];
 
   print_header(out, "Clock Frequencies");
-  for (size_t i = 0; i < sizeof kClocks / sizeof *kClocks; i++) {
-    std::string hz = query(std::string("measure_clock ") + kClocks[i][1]);
-    if (hz.empty()) {
+  for (const Sensor& clock : kClocks) {
+    const std::optional<std::string> hz =
+        query(mbox, std::string("measure_clock ") + clock.arg);
+    if (!hz) {
       return false;
     }
-    long long mhz = strtoll(hz.c_str(), nullptr, 10) / 1000000LL;
-    print_entry(out, kClocks[i][0], std::to_string(mhz) + "Mhz");
+    const std::optional<long long> freq = parse_int(*hz);
+    if (!freq) {
+      return false;
+    }
+    print_entry(out, clock.label, std::to_string(*freq / 1000000) + "Mhz");
   }
 
   print_header(out, "Voltages");
-  for (size_t i = 0; i < sizeof kVolts / sizeof *kVolts; i++) {
-    std::string volts = query(std::string("measure_volts ") + kVolts[i]);
-    if (volts.empty()) {
+  for (const Sensor& rail : kVolts) {
+    const std::optional<std::string> response =
+        query(mbox, std::string("measure_volts ") + rail.arg);
+    if (!response) {
       return false;
     }
-    // %g trims trailing zeros: "1.1000V" -> "1.1V", "1.2250V" -> "1.225V"
-    snprintf(buf, sizeof buf, "%gV", strtod(volts.c_str(), nullptr));
-    print_entry(out, kVolts[i], buf);
+    const std::optional<double> volts = parse_double(*response);
+    if (!volts) {
+      return false;
+    }
+    // Default stream formatting trims trailing zeros:
+    // "1.1000V" -> "1.1V", "1.2250V" -> "1.225V"
+    std::ostringstream value;
+    value << *volts << "V";
+    print_entry(out, rail.label, value.str());
   }
 
   print_header(out, "Temperatures");
-  std::string temp = query("measure_temp");
-  if (temp.empty()) {
+  const std::optional<std::string> temp = query(mbox, "measure_temp");
+  if (!temp) {
     return false;
   }
-  double celsius = strtod(temp.c_str(), nullptr);
-  if (use_fahrenheit) {
-    snprintf(buf, sizeof buf, "%.1fF", celsius * 9.0 / 5.0 + 32.0);
-  } else {
-    snprintf(buf, sizeof buf, "%.1fC", celsius);
+  const std::optional<double> celsius = parse_double(*temp);
+  if (!celsius) {
+    return false;
   }
-  print_entry(out, "SOC", buf);
+  std::ostringstream degrees;
+  degrees << std::fixed << std::setprecision(1);
+  if (use_fahrenheit) {
+    degrees << (*celsius * 9.0 / 5.0 + 32.0) << "F";
+  } else {
+    degrees << *celsius << "C";
+  }
+  print_entry(out, "SOC", degrees.str());
 
   print_header(out, "Memory Allocation");
-  static const char *kMem[][2] = {{"CPU", "arm"}, {"GPU", "gpu"}};
-  for (size_t i = 0; i < sizeof kMem / sizeof *kMem; i++) {
-    std::string mem = query(std::string("get_mem ") + kMem[i][1]);
-    if (mem.empty()) {
+  for (const Sensor& region : kMem) {
+    const std::optional<std::string> mem =
+        query(mbox, std::string("get_mem ") + region.arg);
+    if (!mem) {
       return false;
     }
-    long mb = strtol(mem.c_str(), nullptr, 10);
-    print_entry(out, kMem[i][0], std::to_string(mb) + "MB");
+    const std::optional<long long> megabytes = parse_int(*mem);
+    if (!megabytes) {
+      return false;
+    }
+    print_entry(out, region.label, std::to_string(*megabytes) + "MB");
   }
 
   std::cout << out.str();
   return true;
 }
 
-void refresh_output(const unsigned long delay) {
+void refresh_output(const Mbox& mbox, const std::chrono::milliseconds delay) {
   // Hide the cursor and clear the terminal once, then redraw in place
   // each cycle to avoid flicker
   std::cout << "\033[?25l\033[2J";
   for (;;) {
     std::cout << "\033[H";
-    if (!get_info()) {
+    if (!get_info(mbox)) {
       break;
     }
     std::cout << "\033[J" << std::flush;
-    struct timespec ts;
-    ts.tv_sec = delay / 1000UL;
-    ts.tv_nsec = (delay % 1000UL) * 1000000L;
-    nanosleep(&ts, nullptr);
+    std::this_thread::sleep_for(delay);
   }
   std::cout << "\033[?25h" << std::flush;
 }
@@ -196,50 +246,51 @@ void show_help() {
     "  -h             Show this help message\n";
 }
 
-// Restores the cursor on Ctrl+C so the terminal is left usable.
-// Only async-signal-safe calls allowed here.
-static void handle_signal(int) {
-  ssize_t ret = write(STDOUT_FILENO, "\033[?25h\n", 7);
-  (void)ret;
-  _exit(0);
-}
-
 int main(int argc, char *argv[]) {
-  unsigned long delay = kDefaultDelay;
+  std::chrono::milliseconds delay = kDefaultDelay;
   int opt;
 
   while ((opt = getopt(argc, argv, "t:fvh")) != -1) {
     switch (opt) {
       case 't': {
-        double seconds = strtod(optarg, nullptr);
-        if (seconds <= 0) {
-          std::cerr << kAppName << ": invalid refresh delay '" << optarg << "'" << std::endl;
-          return 1;
+        double seconds = 0.0;
+        try {
+          seconds = std::stod(optarg);
+        } catch (const std::exception&) {
+          // fall through to the range check below
         }
-        delay = (unsigned long)(seconds * 1000.0);
+        if (seconds <= 0) {
+          std::cerr << kAppName << ": invalid refresh delay '" << optarg
+                    << "'" << std::endl;
+          return EXIT_FAILURE;
+        }
+        delay = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::duration<double>(seconds));
         break;
       }
       case 'f':
         use_fahrenheit = true;
         break;
       case 'v':
-        std::cout << kAppName << " v" << VERSION_STRING << std::endl;
-        return 0;
+        std::cout << "\n" << kAppName << " v" << VERSION_STRING << std::endl;
+        return EXIT_SUCCESS;
       case 'h':
         show_help();
-        return 0;
+        return EXIT_SUCCESS;
       default:
         show_help();
-        return 1;
+        return EXIT_FAILURE;
     }
   }
 
-  mbox_fd = mbox_open();
-  signal(SIGINT, handle_signal);
-  signal(SIGTERM, handle_signal);
-
-  refresh_output(delay);
-
-  mbox_close(mbox_fd);
-  return 0;
+  try {
+    const Mbox mbox;
+    std::signal(SIGINT, handle_signal);
+    std::signal(SIGTERM, handle_signal);
+    refresh_output(mbox, delay);
+  } catch (const std::exception& error) {
+    std::cerr << error.what() << std::endl;
+    return EXIT_FAILURE;
+  }
+  return EXIT_SUCCESS;
 }

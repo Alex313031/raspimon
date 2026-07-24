@@ -2,16 +2,18 @@
 #define RASPIMON_H_
 
 // C++ Runtime Headers
+#include <array>
+#include <chrono>
 #include <csignal>
-#include <cstdarg>
-#include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <ctime>
 #include <iostream>
 #include <iomanip>
+#include <optional>
 #include <sstream>
+#include <stdexcept>
 #include <string>
+#include <thread>
 
 // Linux system headers
 #include <unistd.h> // posix
@@ -28,7 +30,7 @@
 #if !defined(STRINGIZE)
  #define STRINGIZER_(in) #in
  #define STRINGIZE(in) STRINGIZER_(in)
-#endif // !defined(_STRINGIZER_)
+#endif // !defined(STRINGIZE)
 
 // Main version constants
 #ifndef VERSION_
@@ -36,28 +38,47 @@
  #define VERSION_(major,minor,build) STRINGIZE(major.minor.build)
  // Version string
  #define VERSION_STRING VERSION_(MAJOR_VERSION, MINOR_VERSION, BUILD_VERSION)
-#endif // _VERSION
+#endif // VERSION_
 
-#define GET_GENCMD_RESULT 0x00030080 // tag id
+inline constexpr unsigned int kGetGencmdResult = 0x00030080; // tag id
 
-#define IOCTL_MBOX_PROPERTY _IOWR(100, 0, char *) // Static define for accessing mbox
+inline constexpr unsigned long kIoctlMboxProperty = _IOWR(100, 0, char *); // for accessing mbox
 
-#define MAX_STRING (4*1024) // Max output string len
+inline constexpr size_t kMaxString = 4u * 1024u; // Max command/response string len
 
-extern unsigned long kDefaultDelay; // default delay
+inline constexpr std::chrono::milliseconds kDefaultDelay{1000}; // default delay
 
 inline const char kAppName[] = "raspimon"; // name of the app
 
-// Roughly equivalent to vcgencmd
-unsigned int gencmd(int file_desc, const char *command, char *result, int result_len);
+// RAII wrapper around the VideoCore mailbox char device
+class Mbox {
+ public:
+  // Opens the mbox device; throws std::runtime_error if unavailable
+  Mbox();
+  ~Mbox();
+
+  Mbox(const Mbox&) = delete;
+  Mbox& operator=(const Mbox&) = delete;
+
+  // Roughly equivalent to vcgencmd: sends `command` to the VideoCore and
+  // returns the raw response (e.g. "frequency(48)=600000000"), or
+  // std::nullopt on failure
+  std::optional<std::string> gencmd(const std::string& command) const;
+
+ private:
+  // use ioctl to send mbox property message
+  int property(void *buf) const;
+
+  int fd_ = -1;
+};
 
 // Shows usage help message.
 void show_help();
 
-// Collects system info for display.
-bool get_info();
+// Collects system info and displays it once.
+bool get_info(const Mbox& mbox);
 
-// Displays output, refreshing periodically every `delay` milliseconds
-void refresh_output(const unsigned long delay);
+// Displays output, refreshing periodically every `delay`
+void refresh_output(const Mbox& mbox, std::chrono::milliseconds delay);
 
 #endif // RASPIMON_H_
