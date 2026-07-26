@@ -24,7 +24,7 @@
 // Adhere to semver -> semver.org
 #define MAJOR_VERSION 1
 #define MINOR_VERSION 0
-#define BUILD_VERSION 1
+#define BUILD_VERSION 2
 
 // Macro to convert to string
 #if !defined(STRINGIZE)
@@ -46,7 +46,7 @@ inline constexpr unsigned long kIoctlMboxProperty = _IOWR(100, 0, char *); // fo
 
 inline constexpr size_t kMaxString = 4u * 1024u; // Max command/response string len
 
-inline constexpr std::chrono::milliseconds kDefaultDelay{1000}; // default delay
+inline constexpr unsigned long kDefaultDelay = 1000UL; // default delay, 1000ms
 
 inline const char kAppName[] = "raspimon"; // name of the app
 

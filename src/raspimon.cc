@@ -6,8 +6,16 @@
 
 namespace {
 
+// Refresh delay, in ms. (1 sec. default)
+static constexpr std::chrono::milliseconds kDefaultDelayMs{kDefaultDelay};
+
 // Whether to display temperatures in Fahrenheit (-f)
 bool use_fahrenheit = false;
+
+// Ends a line with erase-to-end-of-line before the newline, so values that
+// got shorter since the last frame (e.g. "1.875V" -> "1V") don't leave
+// leftover characters on screen
+constexpr char kEndLine[] = "\033[K\n";
 
 // A sensor to display, as {display label, gencmd argument}
 struct Sensor {
@@ -17,19 +25,46 @@ struct Sensor {
 
 // Clocks queried with `measure_clock`
 constexpr std::array<Sensor, 12> kClocks{{
-  {"CPU", "arm"}, {"GPU", "core"}, {"h264", "h264"}, {"isp", "isp"},
-  {"v3d", "v3d"}, {"uart", "uart"}, {"pwm", "pwm"}, {"emmc", "emmc"},
-  {"pixel", "pixel"}, {"vec", "vec"}, {"hdmi", "hdmi"}, {"dpi", "dpi"},
+  {"CPU", "arm"}, {"GPU", "core"}, {"V3D", "v3d"}, {"H264", "h264"},
+  {"Image Sensor", "isp"}, {"UART", "uart"}, {"PWM", "pwm"}, {"eMMC", "emmc"},
+  {"Display", "pixel"}, {"Vid Enc.", "vec"}, {"HDMI", "hdmi"}, {"DPI", "dpi"},
 }};
 
 // Voltage rails queried with `measure_volts`
 constexpr std::array<Sensor, 4> kVolts{{
-  {"core", "core"}, {"sdram_c", "sdram_c"},
-  {"sdram_i", "sdram_i"}, {"sdram_p", "sdram_p"},
+  {"CPU", "core"}, {"RAM Controller", "sdram_c"},
+  {"RAM I/O", "sdram_i"}, {"RAM PHY", "sdram_p"},
 }};
 
 // Memory regions queried with `get_mem`
 constexpr std::array<Sensor, 2> kMem{{{"CPU", "arm"}, {"GPU", "gpu"}}};
+
+// Compile-time strlen, for computing the label column width
+constexpr size_t const_strlen(const char *in) {
+  size_t len = 0;
+  while (in[len] != '\0') {
+    ++len;
+  }
+  return len;
+}
+
+// Returns the wider of `width` and the widest label in `sensors`
+template <size_t N>
+constexpr size_t widest_label(const std::array<Sensor, N>& sensors,
+                              size_t width) {
+  for (const Sensor& sensor : sensors) {
+    const size_t len = const_strlen(sensor.label);
+    if (len > width) {
+      width = len;
+    }
+  }
+  return width;
+}
+
+// Label column width: the widest label across all sensor tables plus one
+// space before the ':', so columns stay aligned when labels change
+constexpr int kLabelWidth = static_cast<int>(widest_label(kMem,
+    widest_label(kVolts, widest_label(kClocks, const_strlen("SOC")))) + 1);
 
 // Runs `command` via gencmd and returns the value after the '=' in the
 // response (e.g. "frequency(48)=600000000" -> "600000000")
@@ -66,13 +101,14 @@ std::optional<double> parse_double(const std::string& in) {
 void print_header(std::ostream& out, const std::string& title) {
   std::string line = "--------" + title;
   line.resize(33, '-');
-  out << line << "\n";
+  out << line << kEndLine;
 }
 
 // Prints one "      name    : value" entry
 void print_entry(std::ostream& out, const std::string& name,
                  const std::string& value) {
-  out << "      " << std::left << std::setw(8) << name << ": " << value << "\n";
+  out << "      " << std::left << std::setw(kLabelWidth) << name << ": "
+      << value << kEndLine;
 }
 
 // Restores the cursor on Ctrl+C so the terminal is left usable.
@@ -178,8 +214,13 @@ bool get_info(const Mbox& mbox) {
     // Default stream formatting trims trailing zeros:
     // "1.1000V" -> "1.1V", "1.2250V" -> "1.225V"
     std::ostringstream value;
-    value << *volts << "V";
-    print_entry(out, rail.label, value.str());
+    value << *volts;
+    std::string text = value.str();
+    // But always keep at least one decimal place: "1" -> "1.0"
+    if (text.find('.') == std::string::npos) {
+      text += ".0";
+    }
+    print_entry(out, rail.label, text + "V");
   }
 
   print_header(out, "Temperatures");
@@ -194,7 +235,7 @@ bool get_info(const Mbox& mbox) {
   std::ostringstream degrees;
   degrees << std::fixed << std::setprecision(1);
   if (use_fahrenheit) {
-    degrees << (*celsius * 9.0 / 5.0 + 32.0) << "F";
+    degrees << (*celsius * 9.0f / 5.0f + 32.0f) << "F";
   } else {
     degrees << *celsius << "C";
   }
@@ -247,7 +288,7 @@ void show_help() {
 }
 
 int main(int argc, char *argv[]) {
-  std::chrono::milliseconds delay = kDefaultDelay;
+  std::chrono::milliseconds delay = kDefaultDelayMs;
   int opt;
 
   while ((opt = getopt(argc, argv, "t:fvh")) != -1) {
