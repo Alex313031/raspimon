@@ -1,6 +1,16 @@
 // Copyright (c) 2026 Alex313031
 
 // raspimon: A small system monitor for Raspberry Pi
+//
+// How it works: the Pi's VideoCore firmware exposes hardware info (clocks,
+// voltages, temperature, memory split) through a "mailbox" - a message
+// passing interface between the ARM cores and the firmware. The kernel
+// presents it as the character device /dev/vcio, which we open like a file
+// and drive with ioctl(). On Win32 this would be opening a device path
+// with CreateFile() and calling DeviceIoControl() on the handle. Through
+// it we send the same text commands the stock vcgencmd tool uses
+// ("measure_clock arm", "measure_volts core", ...), parse the text
+// responses, and redraw them as a dashboard in the terminal.
 
 #include "raspimon.h"
 
@@ -12,9 +22,18 @@ static constexpr std::chrono::milliseconds kDefaultDelayMs{kDefaultDelay};
 // Whether to display temperatures in Fahrenheit (-f)
 bool use_fahrenheit = false;
 
-// Ends a line with erase-to-end-of-line before the newline, so values that
-// got shorter since the last frame (e.g. "1.875V" -> "1V") don't leave
-// leftover characters on screen
+// The display is drawn with ANSI/VT escape sequences: control codes
+// written to stdout that the terminal interprets instead of printing
+// (Windows Terminal and modern conhost understand the same codes, as
+// enabled by ENABLE_VIRTUAL_TERMINAL_PROCESSING). "\033" is ESC; the ones
+// used here are:
+//   ESC[?25l hide cursor    ESC[2J clear whole screen   ESC[H cursor home
+//   ESC[K    erase to end of line                       ESC[?25h show cursor
+//   ESC[J    erase from cursor to end of screen
+//
+// kEndLine ends a line with erase-to-end-of-line before the newline, so
+// values that got shorter since the last frame (e.g. "1.875V" -> "1V")
+// don't leave leftover characters on screen
 constexpr char kEndLine[] = "\033[K\n";
 
 // A sensor to display, as {display label, gencmd argument}
@@ -111,8 +130,16 @@ void print_entry(std::ostream& out, const std::string& name,
       << value << kEndLine;
 }
 
-// Restores the cursor on Ctrl+C so the terminal is left usable.
-// Only async-signal-safe calls allowed here.
+// Handles SIGINT (Ctrl+C) and SIGTERM (polite kill) - POSIX signals are
+// the rough equivalent of a Win32 console control handler, except the
+// handler runs by interrupting the program mid-instruction on its own
+// stack. Because of that, only "async-signal-safe" functions are allowed
+// here: raw syscalls like write(), but NOT std::cout (it might be halfway
+// through a write, holding its internal lock, when the signal hits).
+// Restores the cursor with the raw write() syscall (like WriteFile() to
+// the stdout handle), then _exit() ends the process immediately without
+// running destructors or flushing streams - the unsafe-in-a-handler parts
+// of a normal exit()
 void handle_signal(int) {
   ssize_t ret = write(STDOUT_FILENO, "\033[?25h\n", 7);
   (void)ret;
@@ -124,6 +151,11 @@ void handle_signal(int) {
 Mbox::Mbox() {
   // open a char device file used for communicating with kernel mbox driver
   // first try the more restrictive interface but fall back to full if unavailable
+  //
+  // On Linux, device drivers appear as special files under /dev, opened
+  // with the same open() syscall as regular files (compare Win32's
+  // CreateFile() on a "\\.\DeviceName" path). Needs root or membership
+  // in the `video` group. O_RDONLY = read-only access mode
   constexpr std::array<const char *, 2> kDevices{"/dev/vcio_gencmd", "/dev/vcio"};
   for (const char *device : kDevices) {
     fd_ = open(device, O_RDONLY);
@@ -137,11 +169,17 @@ Mbox::Mbox() {
 }
 
 Mbox::~Mbox() {
-  close(fd_);
+  close(fd_); // release the fd, like CloseHandle()
 }
 
 int Mbox::property(void *buf) const {
   // use ioctl to send mbox property message
+  //
+  // ioctl() is the catch-all "device control" syscall: the request code
+  // (kIoctlMboxProperty) tells the driver behind fd_ what operation to
+  // perform on `buf` - here, "hand this property message to the firmware
+  // and write its response back into the same buffer". Directly analogous
+  // to Win32 DeviceIoControl(handle, IOCTL_code, buffer, ...)
   int ret_val = ioctl(fd_, kIoctlMboxProperty, buf);
 
   if (ret_val < 0) {
@@ -157,6 +195,17 @@ std::optional<std::string> Mbox::gencmd(const std::string& command) const {
     return std::nullopt;
   }
 
+  // Build a mailbox "property message": an array of 32-bit words handed
+  // to the firmware, which overwrites it in place with the response.
+  //   p[0]    total message size in bytes
+  //   p[1]    request/response code (0 = this is a request)
+  //   p[2]    tag id (kGetGencmdResult = "execute a gencmd command")
+  //   p[3]    size of the tag's value buffer in bytes
+  //   p[4]    tag request/response length
+  //   p[5]    value buffer word 0: gencmd error code in the response
+  //   p[6..]  value buffer: command string in, response string out
+  //   last    end-tag terminator (0)
+  // (kMaxString >> 2) converts the 4KB value buffer size to word count
   std::array<unsigned int, (kMaxString >> 2) + 7> p{};
   size_t i = 0;
   p[i++] = 0; // size
@@ -179,6 +228,9 @@ std::optional<std::string> Mbox::gencmd(const std::string& command) const {
   if (p[5] != 0) { // firmware error code
     return std::nullopt;
   }
+  // The response is a NUL-terminated C string the firmware wrote into the
+  // value buffer; strnlen() bounds the scan in case the terminator is
+  // missing, and the (length-counted) std::string constructor copies it out
   const char *response = reinterpret_cast<const char *>(&p[6]);
   return std::string(response, strnlen(response, kMaxString - 1));
 }
@@ -261,7 +313,8 @@ bool get_info(const Mbox& mbox) {
 
 void refresh_output(const Mbox& mbox, const std::chrono::milliseconds delay) {
   // Hide the cursor and clear the terminal once, then redraw in place
-  // each cycle to avoid flicker
+  // each cycle to avoid flicker: home the cursor (ESC[H), repaint the
+  // frame over the old one, and erase whatever is left below it (ESC[J)
   std::cout << "\033[?25l\033[2J";
   for (;;) {
     std::cout << "\033[H";
@@ -291,6 +344,11 @@ int main(int argc, char *argv[]) {
   std::chrono::milliseconds delay = kDefaultDelayMs;
   int opt;
 
+  // getopt() is the standard POSIX command-line parser (no Win32
+  // equivalent - closest is manually walking argv). The "t:fvh" string
+  // declares the valid options; the ':' means -t takes an argument, which
+  // getopt delivers through the global `optarg`. Returns one option
+  // character per call, -1 when done
   while ((opt = getopt(argc, argv, "t:fvh")) != -1) {
     switch (opt) {
       case 't': {
@@ -325,6 +383,8 @@ int main(int argc, char *argv[]) {
   }
 
   try {
+    // Opens /dev/vcio here; the destructor closes it on any path out of
+    // this block (including exceptions), so there is no cleanup code
     const Mbox mbox;
     std::signal(SIGINT, handle_signal);
     std::signal(SIGTERM, handle_signal);
