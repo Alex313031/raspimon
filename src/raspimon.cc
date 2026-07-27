@@ -16,135 +16,143 @@
 
 namespace {
 
-// Refresh delay, in ms. (1 sec. default)
-static constexpr std::chrono::milliseconds kDefaultDelayMs{kDefaultDelay};
+  // Refresh delay, in ms. (1 sec. default)
+  static constexpr std::chrono::milliseconds kDefaultDelayMs{kDefaultDelay};
 
-// Whether to display temperatures in Fahrenheit (-f)
-bool use_fahrenheit = false;
+  // Whether to display temperatures in Fahrenheit (-f)
+  bool use_fahrenheit = false;
 
-// The display is drawn with ANSI/VT escape sequences: control codes
-// written to stdout that the terminal interprets instead of printing
-// (Windows Terminal and modern conhost understand the same codes, as
-// enabled by ENABLE_VIRTUAL_TERMINAL_PROCESSING). "\033" is ESC; the ones
-// used here are:
-//   ESC[?25l hide cursor    ESC[2J clear whole screen   ESC[H cursor home
-//   ESC[K    erase to end of line                       ESC[?25h show cursor
-//   ESC[J    erase from cursor to end of screen
-//
-// kEndLine ends a line with erase-to-end-of-line before the newline, so
-// values that got shorter since the last frame (e.g. "1.875V" -> "1V")
-// don't leave leftover characters on screen
-constexpr char kEndLine[] = "\033[K\n";
+  // The display is drawn with ANSI/VT escape sequences: control codes
+  // written to stdout that the terminal interprets instead of printing
+  // (Windows Terminal and modern conhost understand the same codes, as
+  // enabled by ENABLE_VIRTUAL_TERMINAL_PROCESSING). "\033" is ESC; the ones
+  // used here are:
+  //   ESC[?25l hide cursor    ESC[2J clear whole screen   ESC[H cursor home
+  //   ESC[K    erase to end of line                       ESC[?25h show cursor
+  //   ESC[J    erase from cursor to end of screen
+  //
+  // kEndLine ends a line with erase-to-end-of-line before the newline, so
+  // values that got shorter since the last frame (e.g. "1.875V" -> "1V")
+  // don't leave leftover characters on screen
+  inline constexpr char kEndLine[] = "\033[K\n";
 
-// A sensor to display, as {display label, gencmd argument}
-struct Sensor {
-  const char *label;
-  const char *arg;
-};
+  // A sensor to display, as {display label, gencmd argument}
+  struct Sensor {
+    const char* label;
+    const char* arg;
+  };
 
-// Clocks queried with `measure_clock`
-constexpr std::array<Sensor, 12> kClocks{{
-  {"CPU", "arm"}, {"GPU", "core"}, {"V3D", "v3d"}, {"H264", "h264"},
-  {"Image Sensor", "isp"}, {"UART", "uart"}, {"PWM", "pwm"}, {"eMMC", "emmc"},
-  {"Display", "pixel"}, {"Vid Enc.", "vec"}, {"HDMI", "hdmi"}, {"DPI", "dpi"},
-}};
+  // Clocks queried with `measure_clock`
+  constexpr std::array<Sensor, 12> kClocks{{
+      {"CPU", "arm"},
+      {"GPU", "core"},
+      {"V3D", "v3d"},
+      {"H264", "h264"},
+      {"Image Sensor", "isp"},
+      {"UART", "uart"},
+      {"PWM", "pwm"},
+      {"eMMC", "emmc"},
+      {"Display", "pixel"},
+      {"Vid Enc.", "vec"},
+      {"HDMI", "hdmi"},
+      {"DPI", "dpi"},
+  }};
 
-// Voltage rails queried with `measure_volts`
-constexpr std::array<Sensor, 4> kVolts{{
-  {"CPU", "core"}, {"RAM Controller", "sdram_c"},
-  {"RAM I/O", "sdram_i"}, {"RAM PHY", "sdram_p"},
-}};
+  // Voltage rails queried with `measure_volts`
+  constexpr std::array<Sensor, 4> kVolts{{
+      {"CPU", "core"},
+      {"RAM Controller", "sdram_c"},
+      {"RAM I/O", "sdram_i"},
+      {"RAM PHY", "sdram_p"},
+  }};
 
-// Memory regions queried with `get_mem`
-constexpr std::array<Sensor, 2> kMem{{{"CPU", "arm"}, {"GPU", "gpu"}}};
+  // Memory regions queried with `get_mem`
+  constexpr std::array<Sensor, 2> kMem{{{"CPU", "arm"}, {"GPU", "gpu"}}};
 
-// Compile-time strlen, for computing the label column width
-constexpr size_t const_strlen(const char *in) {
-  size_t len = 0;
-  while (in[len] != '\0') {
-    ++len;
+  // Compile-time strlen, for computing the label column width
+  constexpr size_t const_strlen(const char* in) {
+    size_t len = 0;
+    while (in[len] != '\0') {
+      ++len;
+    }
+    return len;
   }
-  return len;
-}
 
-// Returns the wider of `width` and the widest label in `sensors`
-template <size_t N>
-constexpr size_t widest_label(const std::array<Sensor, N>& sensors,
-                              size_t width) {
-  for (const Sensor& sensor : sensors) {
-    const size_t len = const_strlen(sensor.label);
-    if (len > width) {
-      width = len;
+  // Returns the wider of `width` and the widest label in `sensors`
+  template <size_t N>
+  constexpr size_t widest_label(const std::array<Sensor, N>& sensors, size_t width) {
+    for (const Sensor& sensor : sensors) {
+      const size_t len = const_strlen(sensor.label);
+      if (len > width) {
+        width = len;
+      }
+    }
+    return width;
+  }
+
+  // Label column width: the widest label across all sensor tables plus one
+  // space before the ':', so columns stay aligned when labels change
+  constexpr int kLabelWidth = static_cast<int>(
+      widest_label(kMem, widest_label(kVolts, widest_label(kClocks, const_strlen("SOC")))) + 1);
+
+  // Runs `command` via gencmd and returns the value after the '=' in the
+  // response (e.g. "frequency(48)=600000000" -> "600000000")
+  std::optional<std::string> query(const Mbox& mbox, const std::string& command) {
+    std::optional<std::string> response = mbox.gencmd(command);
+    if (!response) {
+      return std::nullopt;
+    }
+    const size_t eq = response->find('=');
+    if (eq == std::string::npos) {
+      return response;
+    }
+    return response->substr(eq + 1);
+  }
+
+  // Numeric parsers for firmware responses; std::nullopt on malformed input
+  std::optional<long long> parse_int(const std::string& in) {
+    try {
+      return std::stoll(in);
+    } catch (const std::exception&) {
+      return std::nullopt;
     }
   }
-  return width;
-}
 
-// Label column width: the widest label across all sensor tables plus one
-// space before the ':', so columns stay aligned when labels change
-constexpr int kLabelWidth = static_cast<int>(widest_label(kMem,
-    widest_label(kVolts, widest_label(kClocks, const_strlen("SOC")))) + 1);
-
-// Runs `command` via gencmd and returns the value after the '=' in the
-// response (e.g. "frequency(48)=600000000" -> "600000000")
-std::optional<std::string> query(const Mbox& mbox, const std::string& command) {
-  std::optional<std::string> response = mbox.gencmd(command);
-  if (!response) {
-    return std::nullopt;
+  std::optional<double> parse_double(const std::string& in) {
+    try {
+      return std::stod(in);
+    } catch (const std::exception&) {
+      return std::nullopt;
+    }
   }
-  const size_t eq = response->find('=');
-  if (eq == std::string::npos) {
-    return response;
+
+  // Prints a section header padded with dashes to a fixed width
+  void print_header(std::ostream& out, const std::string& title) {
+    std::string line = "--------" + title;
+    line.resize(33, '-');
+    out << line << kEndLine;
   }
-  return response->substr(eq + 1);
-}
 
-// Numeric parsers for firmware responses; std::nullopt on malformed input
-std::optional<long long> parse_int(const std::string& in) {
-  try {
-    return std::stoll(in);
-  } catch (const std::exception&) {
-    return std::nullopt;
+  // Prints one "      name    : value" entry
+  void print_entry(std::ostream& out, const std::string& name, const std::string& value) {
+    out << "      " << std::left << std::setw(kLabelWidth) << name << ": " << value << kEndLine;
   }
-}
 
-std::optional<double> parse_double(const std::string& in) {
-  try {
-    return std::stod(in);
-  } catch (const std::exception&) {
-    return std::nullopt;
+  // Handles SIGINT (Ctrl+C) and SIGTERM (polite kill) - POSIX signals are
+  // the rough equivalent of a Win32 console control handler, except the
+  // handler runs by interrupting the program mid-instruction on its own
+  // stack. Because of that, only "async-signal-safe" functions are allowed
+  // here: raw syscalls like write(), but NOT std::cout (it might be halfway
+  // through a write, holding its internal lock, when the signal hits).
+  // Restores the cursor with the raw write() syscall (like WriteFile() to
+  // the stdout handle), then _exit() ends the process immediately without
+  // running destructors or flushing streams - the unsafe-in-a-handler parts
+  // of a normal exit()
+  void handle_signal(int) {
+    ssize_t ret = write(STDOUT_FILENO, "\033[?25h\n", 7);
+    (void)ret;
+    _exit(0);
   }
-}
-
-// Prints a section header padded with dashes to a fixed width
-void print_header(std::ostream& out, const std::string& title) {
-  std::string line = "--------" + title;
-  line.resize(33, '-');
-  out << line << kEndLine;
-}
-
-// Prints one "      name    : value" entry
-void print_entry(std::ostream& out, const std::string& name,
-                 const std::string& value) {
-  out << "      " << std::left << std::setw(kLabelWidth) << name << ": "
-      << value << kEndLine;
-}
-
-// Handles SIGINT (Ctrl+C) and SIGTERM (polite kill) - POSIX signals are
-// the rough equivalent of a Win32 console control handler, except the
-// handler runs by interrupting the program mid-instruction on its own
-// stack. Because of that, only "async-signal-safe" functions are allowed
-// here: raw syscalls like write(), but NOT std::cout (it might be halfway
-// through a write, holding its internal lock, when the signal hits).
-// Restores the cursor with the raw write() syscall (like WriteFile() to
-// the stdout handle), then _exit() ends the process immediately without
-// running destructors or flushing streams - the unsafe-in-a-handler parts
-// of a normal exit()
-void handle_signal(int) {
-  ssize_t ret = write(STDOUT_FILENO, "\033[?25h\n", 7);
-  (void)ret;
-  _exit(0);
-}
 
 } // namespace
 
@@ -156,15 +164,14 @@ Mbox::Mbox() {
   // with the same open() syscall as regular files (compare Win32's
   // CreateFile() on a "\\.\DeviceName" path). Needs root or membership
   // in the `video` group. O_RDONLY = read-only access mode
-  constexpr std::array<const char *, 2> kDevices{"/dev/vcio_gencmd", "/dev/vcio"};
-  for (const char *device : kDevices) {
+  constexpr std::array<const char*, 2> kDevices{"/dev/vcio_gencmd", "/dev/vcio"};
+  for (const char* device : kDevices) {
     fd_ = open(device, O_RDONLY);
     if (fd_ >= 0) {
       return;
     }
   }
-  throw std::runtime_error(std::string(kAppName) + ": can't open device file " +
-                           kDevices.back() +
+  throw std::runtime_error(std::string(kAppName) + ": can't open device file " + kDevices.back() +
                            " (are you running on a Raspberry Pi 2/3/4/5?)");
 }
 
@@ -172,7 +179,7 @@ Mbox::~Mbox() {
   close(fd_); // release the fd, like CloseHandle()
 }
 
-int Mbox::property(void *buf) const {
+int Mbox::property(void* buf) const {
   // use ioctl to send mbox property message
   //
   // ioctl() is the catch-all "device control" syscall: the request code
@@ -208,19 +215,19 @@ std::optional<std::string> Mbox::gencmd(const std::string& command) const {
   // (kMaxString >> 2) converts the 4KB value buffer size to word count
   std::array<unsigned int, (kMaxString >> 2) + 7> p{};
   size_t i = 0;
-  p[i++] = 0; // size
-  p[i++] = 0x00000000; // process request
+  p[i++]   = 0;          // size
+  p[i++]   = 0x00000000; // process request
 
-  p[i++] = kGetGencmdResult; // (the tag id)
+  p[i++] = kGetGencmdResult;                      // (the tag id)
   p[i++] = static_cast<unsigned int>(kMaxString); // buffer_len
-  p[i++] = 0; // request_len (set to response length)
-  p[i++] = 0; // error response
+  p[i++] = 0;                                     // request_len (set to response length)
+  p[i++] = 0;                                     // error response
 
   std::memcpy(&p[i], command.c_str(), command.size() + 1);
   i += kMaxString >> 2;
 
-  p[i++] = 0x00000000; // end tag
-  p[0] = static_cast<unsigned int>(i * sizeof(unsigned int)); // actual size
+  p[i++] = 0x00000000;                                          // end tag
+  p[0]   = static_cast<unsigned int>(i * sizeof(unsigned int)); // actual size
 
   if (property(p.data()) < 0) {
     return std::nullopt;
@@ -231,7 +238,7 @@ std::optional<std::string> Mbox::gencmd(const std::string& command) const {
   // The response is a NUL-terminated C string the firmware wrote into the
   // value buffer; strnlen() bounds the scan in case the terminator is
   // missing, and the (length-counted) std::string constructor copies it out
-  const char *response = reinterpret_cast<const char *>(&p[6]);
+  const char* response = reinterpret_cast<const char*>(&p[6]);
   return std::string(response, strnlen(response, kMaxString - 1));
 }
 
@@ -240,8 +247,7 @@ bool get_info(const Mbox& mbox) {
 
   print_header(out, "Clock Frequencies");
   for (const Sensor& clock : kClocks) {
-    const std::optional<std::string> hz =
-        query(mbox, std::string("measure_clock ") + clock.arg);
+    const std::optional<std::string> hz = query(mbox, std::string("measure_clock ") + clock.arg);
     if (!hz) {
       return false;
     }
@@ -295,8 +301,7 @@ bool get_info(const Mbox& mbox) {
 
   print_header(out, "Memory Allocation");
   for (const Sensor& region : kMem) {
-    const std::optional<std::string> mem =
-        query(mbox, std::string("get_mem ") + region.arg);
+    const std::optional<std::string> mem = query(mbox, std::string("get_mem ") + region.arg);
     if (!mem) {
       return false;
     }
@@ -328,19 +333,19 @@ void refresh_output(const Mbox& mbox, const std::chrono::milliseconds delay) {
 }
 
 void show_help() {
-  std::cout <<
-    "Usage: " << kAppName << " [ options ]\n"
-    "A small hardware monitor for Raspberry Pi.\n\n"
-    "Displays clock frequencies, voltages, temperatures, and memory\n"
-    "allocation at a glance, refreshing periodically.\n\n"
-    "Options:\n"
-    "  -t <seconds>   Refresh every <seconds> seconds (default 1)\n"
-    "  -f             Display temperatures in Fahrenheit\n"
-    "  -v             Show program version\n"
-    "  -h             Show this help message\n";
+  std::cout << "Usage: " << kAppName
+            << " [ options ]\n"
+               "A small hardware monitor for Raspberry Pi.\n\n"
+               "Displays clock frequencies, voltages, temperatures, and memory\n"
+               "allocation at a glance, refreshing periodically.\n\n"
+               "Options:\n"
+               "  -t <seconds>   Refresh every <seconds> seconds (default 1)\n"
+               "  -f             Display temperatures in Fahrenheit\n"
+               "  -v             Show program version\n"
+               "  -h             Show this help message\n";
 }
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
   std::chrono::milliseconds delay = kDefaultDelayMs;
   int opt;
 
@@ -359,8 +364,7 @@ int main(int argc, char *argv[]) {
           // fall through to the range check below
         }
         if (seconds <= 0) {
-          std::cerr << kAppName << ": invalid refresh delay '" << optarg
-                    << "'" << std::endl;
+          std::cerr << kAppName << ": invalid refresh delay '" << optarg << "'" << std::endl;
           return EXIT_FAILURE;
         }
         delay = std::chrono::duration_cast<std::chrono::milliseconds>(

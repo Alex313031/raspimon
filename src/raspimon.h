@@ -2,23 +2,23 @@
 #define RASPIMON_H_
 
 // C++ Runtime Headers
-#include <array> // std::array
-#include <chrono> // std::chrono::milliseconds
-#include <csignal> // std::signal() and the SIG* constants
-#include <cstdlib> // EXIT_SUCCESS / EXIT_FAILURE
-#include <cstring> // std::memcpy(), strnlen()
-#include <iostream> // std::cout / std::cerr
-#include <iomanip> // std::setw(), std::setprecision()
-#include <optional> // std::optional
-#include <sstream> // std::ostringstream
+#include <array>     // std::array
+#include <chrono>    // std::chrono::milliseconds
+#include <csignal>   // std::signal() and the SIG* constants
+#include <cstdlib>   // EXIT_SUCCESS / EXIT_FAILURE
+#include <cstring>   // std::memcpy(), strnlen()
+#include <iomanip>   // std::setw(), std::setprecision()
+#include <iostream>  // std::cout / std::cerr
+#include <optional>  // std::optional
+#include <sstream>   // std::ostringstream
 #include <stdexcept> // std::runtime_error
-#include <string> // std::string
-#include <thread> // std::this_thread::sleep_for()
+#include <string>    // std::string
+#include <thread>    // std::this_thread::sleep_for()
 
 // Linux system headers
-#include <unistd.h> // Core POSIX syscall wrappers: close(), write(), getopt()
-#include <fcntl.h> // open() and its O_* access flags (like CreateFile() on Win32)
+#include <fcntl.h>     // open() and its O_* access flags (like CreateFile() on Win32)
 #include <sys/ioctl.h> // ioctl(): device I/O control (like DeviceIoControl() on Win32)
+#include <unistd.h>    // Core POSIX syscall wrappers: close(), write(), getopt()
 
 // These next few lines are where we control version number
 // Adhere to semver -> semver.org
@@ -29,13 +29,13 @@
 // Macro to convert to string
 #if !defined(STRINGIZE)
  #define STRINGIZER_(in) #in
- #define STRINGIZE(in) STRINGIZER_(in)
+ #define STRINGIZE(in)   STRINGIZER_(in)
 #endif // !defined(STRINGIZE)
 
 // Main version constants
 #ifndef VERSION_
  // Run stringizer above
- #define VERSION_(major,minor,build) STRINGIZE(major.minor.build)
+ #define VERSION_(major, minor, build) STRINGIZE(major.minor.build)
  // Version string
  #define VERSION_STRING VERSION_(MAJOR_VERSION, MINOR_VERSION, BUILD_VERSION)
 #endif // VERSION_
@@ -48,7 +48,7 @@ inline constexpr unsigned int kGetGencmdResult = 0x00030080; // tag id
 // transfer direction (read+write), the driver's magic number (100), a
 // command number (0), and the argument size into one integer - Linux's
 // version of the Win32 CTL_CODE() macro for building IOCTL_* codes
-inline constexpr unsigned long kIoctlMboxProperty = _IOWR(100, 0, char *); // for accessing mbox
+inline constexpr unsigned long kIoctlMboxProperty = _IOWR(100, 0, char*); // for accessing mbox
 
 inline constexpr size_t kMaxString = 4u * 1024u; // Max command/response string len
 
@@ -65,7 +65,7 @@ class Mbox {
   Mbox();
   ~Mbox();
 
-  Mbox(const Mbox&) = delete;
+  Mbox(const Mbox&)            = delete;
   Mbox& operator=(const Mbox&) = delete;
 
   // Roughly equivalent to vcgencmd: sends `command` to the VideoCore and
@@ -75,7 +75,7 @@ class Mbox {
 
  private:
   // use ioctl to send mbox property message
-  int property(void *buf) const;
+  int property(void* buf) const;
 
   // The "file descriptor" from open(): a small integer handle to the open
   // device, POSIX's equivalent of a Win32 HANDLE. -1 means "not open"
