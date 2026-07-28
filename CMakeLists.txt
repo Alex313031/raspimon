@@ -3,7 +3,12 @@ project(raspimon)
 
 option(IS_DEBUG "Compile in debug mode" OFF)
 
-add_executable(raspimon src/raspimon.cc)
+add_executable(raspimon
+  src/gencmd.cc
+  src/pch.cc
+  src/raspimon.cc
+  src/utils.cc
+)
 
 target_link_libraries(raspimon m)
 

@@ -17,14 +17,15 @@ else
   LDFLAGS  += -static -s
 endif
 
-OBJECTS := raspimon.o
+OBJECTS := raspimon.o gencmd.o utils.o pch.o
+HEADERS := $(SRCDIR)/raspimon.h $(SRCDIR)/gencmd.h $(SRCDIR)/utils.h $(SRCDIR)/pch.h
 
 all: $(TARGET)
 
 $(TARGET): $(OBJECTS)
 	$(CXX) $(LDFLAGS) -o $@ $(OBJECTS) -lm
 
-$(OBJECTS): $(SRCDIR)/raspimon.cc $(SRCDIR)/raspimon.h
+%.o: $(SRCDIR)/%.cc $(HEADERS)
 	$(CXX) $(CPPFLAGS) $(CFLAGS) $(CXXFLAGS) -c -o $@ $<
 
 clean:
