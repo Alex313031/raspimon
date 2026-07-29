@@ -128,7 +128,7 @@ std::string GetPiModelName() {
   // RAM size field: 0 = 256MB doubling each step up to 6 = 16GB
   constexpr std::array<const char*, 7> kRamSizes{"256MB", "512MB", "1GB", "2GB",
                                                  "4GB",   "8GB",   "16GB"};
-  std::string name = std::string("Raspberry Pi ") + model;
+  std::string name = std::string(" Pi Model ") + model;
   const unsigned int ram = (board_revision >> 20) & 0x7;
   if (ram < kRamSizes.size()) {
     name += std::string(" ") + kRamSizes[ram];

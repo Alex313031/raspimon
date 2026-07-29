@@ -48,6 +48,27 @@ namespace {
       {"RAM PHY", "sdram_p"},
   }};
 
+  // PMIC voltage rails to display on the Pi 5, as {display label, rail
+  // name in the pmic_read_adc response}, in display order: CPU and RAM
+  // lead the section to mirror the measure_volts layout on older boards.
+  // (VDD2 feeds the LPDDR4X RAM core, VDDQ feeds its I/O lines)
+  constexpr std::array<Sensor, 14> kPmicRails{{
+      {"CPU", "VDD_CORE_V"},
+      {"RAM Core", "DDR_VDD2_V"},
+      {"RAM I/O", "DDR_VDDQ_V"},
+      {"3.3V System", "3V3_SYS_V"},
+      {"1.8V System", "1V8_SYS_V"},
+      {"1.1V System", "1V1_SYS_V"},
+      {"0.8V Switched", "0V8_SW_V"},
+      {"0.8V Always-On", "0V8_AON_V"},
+      {"WiFi", "3V7_WL_SW_V"},
+      {"Video DAC", "3V3_DAC_V"},
+      {"ADC", "3V3_ADC_V"},
+      {"HDMI", "HDMI_V"},
+      {"5V Input", "EXT5V_V"},
+      {"RTC Battery", "BATT_V"},
+  }};
+
   // Returns the wider of `width` and the widest label in `sensors`
   template <size_t N>
   constexpr size_t GetWidestLabel(const std::array<Sensor, N>& sensors, size_t width) {
@@ -63,7 +84,9 @@ namespace {
   // Label column width: the widest label across all sensor tables plus one
   // space before the ':', so columns stay aligned when labels change
   constexpr int kLabelWidth = static_cast<int>(
-      GetWidestLabel(kVolts, GetWidestLabel(kClocks, cstrlen("SOC"))) + 1);
+      GetWidestLabel(kPmicRails,
+                     GetWidestLabel(kVolts, GetWidestLabel(kClocks, cstrlen("SOC")))) +
+      1);
 
   // Clock rows to skip because a given generation doesn't have the
   // hardware: the Pi 5 moved PWM into the RP1 I/O chip, dropped the H264
@@ -82,16 +105,12 @@ namespace {
     return false;
   }
 
-  // Default stream formatting trims trailing zeros: "1.1000" -> "1.1",
-  // "1.2250" -> "1.225", but always keep at least one decimal: "1" -> "1.0"
+  // Voltages print with exactly three decimals, rounded:
+  // 0.805792 -> "0.806V", 1.1 -> "1.100V"
   std::string FormatVolts(double volts) {
     std::ostringstream value;
-    value << volts;
-    std::string text = value.str();
-    if (text.find('.') == std::string::npos) {
-      text += ".0";
-    }
-    return text + "V";
+    value << std::fixed << std::setprecision(3) << volts;
+    return value.str() + "V";
   }
 
   // The Pi 5 manages power with a dedicated PMIC chip, and the old
@@ -107,9 +126,11 @@ namespace {
     if (!response) {
       return false;
     }
+    // First collect every voltage line as a {rail name, volts} pair, in
+    // firmware order: " VDD_CORE_V volt(15)=0.71620000V" -> {"VDD_CORE_V", 0.7162}
+    std::vector<std::pair<std::string, double>> rails;
     std::istringstream lines(*response);
     std::string line;
-    bool found_any = false;
     while (std::getline(lines, line)) {
       const size_t volt = line.find(" volt(");
       if (volt == std::string::npos) {
@@ -123,14 +144,36 @@ namespace {
       if (!volts) {
         continue;
       }
-      // The label is the rail name: strip leading spaces and the _V
-      // suffix, e.g. " VDD_CORE_V volt(15)=..." -> "VDD_CORE"
-      std::string label = line.substr(0, volt);
-      label.erase(0, label.find_first_not_of(' '));
+      std::string name = line.substr(0, volt);
+      name.erase(0, name.find_first_not_of(' '));
+      rails.emplace_back(name, *volts);
+    }
+
+    // Print the rails kPmicRails knows in its order (CPU and RAM first),
+    // with its friendly labels
+    bool found_any = false;
+    std::vector<bool> shown(rails.size(), false);
+    for (const Sensor& rail : kPmicRails) {
+      for (size_t i = 0; i < rails.size(); ++i) {
+        if (!shown[i] && rails[i].first == rail.arg) {
+          PrintOutEntry(out, rail.label, FormatVolts(rails[i].second), kLabelWidth);
+          shown[i]  = true;
+          found_any = true;
+          break;
+        }
+      }
+    }
+    // Any rail the table doesn't know (say, from newer firmware) still
+    // shows, after the known ones, labeled by its raw name minus the _V
+    for (size_t i = 0; i < rails.size(); ++i) {
+      if (shown[i]) {
+        continue;
+      }
+      std::string label = rails[i].first;
       if (label.size() > 2 && label.compare(label.size() - 2, 2, "_V") == 0) {
         label.resize(label.size() - 2);
       }
-      PrintOutEntry(out, label, FormatVolts(*volts), kLabelWidth);
+      PrintOutEntry(out, label, FormatVolts(rails[i].second), kLabelWidth);
       found_any = true;
     }
     return found_any;

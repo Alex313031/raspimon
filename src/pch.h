@@ -15,6 +15,8 @@
 #include <stdexcept> // std::runtime_error
 #include <string>    // std::string
 #include <thread>    // std::this_thread::sleep_for()
+#include <utility>   // std::pair
+#include <vector>    // std::vector
 
 // Linux system headers
 #include <fcntl.h>     // open() and its O_* access flags (like CreateFile() on Win32)
