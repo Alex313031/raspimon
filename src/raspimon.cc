@@ -24,7 +24,7 @@ namespace {
   constexpr std::chrono::milliseconds kDefaultDelayMs{kDefaultDelay};
 
   // Clocks queried with `measure_clock`
-  constexpr std::array<Sensor, 12> kClocks{{
+  constexpr std::array<Sensor, 13> kClocks{{
       {"CPU", "arm"},
       {"GPU", "core"},
       {"V3D", "v3d"},
@@ -33,6 +33,7 @@ namespace {
       {"UART", "uart"},
       {"PWM", "pwm"},
       {"eMMC", "emmc"},
+      {"eMMC2", "emmc2"},
       {"Display", "pixel"},
       {"Vid Enc.", "vec"},
       {"HDMI", "hdmi"},
@@ -63,6 +64,77 @@ namespace {
   // space before the ':', so columns stay aligned when labels change
   constexpr int kLabelWidth = static_cast<int>(
       GetWidestLabel(kVolts, GetWidestLabel(kClocks, cstrlen("SOC"))) + 1);
+
+  // Clock rows to skip because a given generation doesn't have the
+  // hardware: the Pi 5 moved PWM into the RP1 I/O chip, dropped the H264
+  // encoder block, and replaced the VideoCore ISP with its own PiSP (the
+  // firmware's isp clock just echoes the core clock there); emmc2, the
+  // Pi 4's real SD-card controller, only answers on a Pi 4
+  bool SkipClock(const Sensor& clock) {
+    if (IsPi5() &&
+        (std::strcmp(clock.arg, "pwm") == 0 || std::strcmp(clock.arg, "h264") == 0 ||
+         std::strcmp(clock.arg, "isp") == 0)) {
+      return true;
+    }
+    if (!IsPi4() && std::strcmp(clock.arg, "emmc2") == 0) {
+      return true;
+    }
+    return false;
+  }
+
+  // Default stream formatting trims trailing zeros: "1.1000" -> "1.1",
+  // "1.2250" -> "1.225", but always keep at least one decimal: "1" -> "1.0"
+  std::string FormatVolts(double volts) {
+    std::ostringstream value;
+    value << volts;
+    std::string text = value.str();
+    if (text.find('.') == std::string::npos) {
+      text += ".0";
+    }
+    return text + "V";
+  }
+
+  // The Pi 5 manages power with a dedicated PMIC chip, and the old
+  // measure_volts rails don't exist there. Instead the firmware answers
+  // `pmic_read_adc` with the PMIC's live ADC readings, one rail per line:
+  //   VDD_CORE_A current(7)=2.16880000A
+  //   VDD_CORE_V volt(15)=0.71620000V
+  // Prints every voltage rail (the "volt(" lines), labeled by rail name.
+  // Uses VideoCoreGenCommand directly because QueryCmd would chop the
+  // multi-line response at the first '='
+  bool PrintPmicVoltages(std::ostream& out, const Mbox& mbox) {
+    const std::optional<std::string> response = mbox.VideoCoreGenCommand("pmic_read_adc");
+    if (!response) {
+      return false;
+    }
+    std::istringstream lines(*response);
+    std::string line;
+    bool found_any = false;
+    while (std::getline(lines, line)) {
+      const size_t volt = line.find(" volt(");
+      if (volt == std::string::npos) {
+        continue; // a current(n) line, or blank
+      }
+      const size_t eq = line.find('=', volt);
+      if (eq == std::string::npos) {
+        continue;
+      }
+      const std::optional<double> volts = ParseDouble(line.substr(eq + 1));
+      if (!volts) {
+        continue;
+      }
+      // The label is the rail name: strip leading spaces and the _V
+      // suffix, e.g. " VDD_CORE_V volt(15)=..." -> "VDD_CORE"
+      std::string label = line.substr(0, volt);
+      label.erase(0, label.find_first_not_of(' '));
+      if (label.size() > 2 && label.compare(label.size() - 2, 2, "_V") == 0) {
+        label.resize(label.size() - 2);
+      }
+      PrintOutEntry(out, label, FormatVolts(*volts), kLabelWidth);
+      found_any = true;
+    }
+    return found_any;
+  }
 } // namespace
 
 bool GetInfo(const Mbox& mbox) {
@@ -73,11 +145,7 @@ bool GetInfo(const Mbox& mbox) {
 
   PrintOutHeader(out, "Clock Frequencies");
   for (const Sensor& clock : kClocks) {
-    // The Pi 5 moved PWM into the RP1 I/O chip and dropped the H264
-    // encoder block, so the VideoCore can't see either - skip the rows
-    // rather than showing a meaningless 0MHz
-    if (IsPi5() &&
-        (std::strcmp(clock.arg, "pwm") == 0 || std::strcmp(clock.arg, "h264") == 0)) {
+    if (SkipClock(clock)) {
       continue;
     }
     const std::optional<std::string> hertz = QueryCmd(mbox, std::string("measure_clock ") + clock.arg);
@@ -96,26 +164,25 @@ bool GetInfo(const Mbox& mbox) {
   }
 
   PrintOutHeader(out, "Voltages");
-  for (const Sensor& rail : kVolts) {
-    const std::optional<std::string> response =
-        QueryCmd(mbox, std::string("measure_volts ") + rail.arg);
-    if (!response) {
+  if (IsPi5()) {
+    // The measure_volts rails below don't exist on Pi 5; read the PMIC's
+    // ADC instead, which reports more rails and real measured values
+    if (!PrintPmicVoltages(out, mbox)) {
       return false;
     }
-    const std::optional<double> volts = ParseDouble(*response);
-    if (!volts) {
-      return false;
+  } else {
+    for (const Sensor& rail : kVolts) {
+      const std::optional<std::string> response =
+          QueryCmd(mbox, std::string("measure_volts ") + rail.arg);
+      if (!response) {
+        return false;
+      }
+      const std::optional<double> volts = ParseDouble(*response);
+      if (!volts) {
+        return false;
+      }
+      PrintOutEntry(out, rail.label, FormatVolts(*volts), kLabelWidth);
     }
-    // Default stream formatting trims trailing zeros:
-    // "1.1000V" -> "1.1V", "1.2250V" -> "1.225V"
-    std::ostringstream value;
-    value << *volts;
-    std::string text = value.str();
-    // But always keep at least one decimal place: "1" -> "1.0"
-    if (text.find('.') == std::string::npos) {
-      text += ".0";
-    }
-    PrintOutEntry(out, rail.label, text + "V", kLabelWidth);
   }
 
   PrintOutHeader(out, "Temperatures");
@@ -151,7 +218,7 @@ bool GetInfo(const Mbox& mbox) {
   if (IsPi5()) {
     // The Pi 5 has no static GPU memory split (gpu_mem is ignored); the
     // GPU allocates from system RAM on demand, so no fixed number exists
-    PrintOutEntry(out, "GPU", "shared (dynamic)", kLabelWidth);
+    PrintOutEntry(out, "GPU", "(dynamic)", kLabelWidth);
   } else {
     const std::optional<std::string> gpu_mem = QueryCmd(mbox, "get_mem gpu");
     if (!gpu_mem) {
