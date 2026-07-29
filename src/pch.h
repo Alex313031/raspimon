@@ -7,6 +7,7 @@
 #include <csignal>   // std::signal() and the SIG* constants
 #include <cstdlib>   // EXIT_SUCCESS / EXIT_FAILURE
 #include <cstring>   // std::memcpy(), strnlen()
+#include <fstream>   // std::ifstream, for reading /proc files
 #include <iomanip>   // std::setw(), std::setprecision()
 #include <iostream>  // std::cout / std::cerr
 #include <optional>  // std::optional

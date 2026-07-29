@@ -47,4 +47,32 @@ void HandleSignal(int signum);
 // is defined (debug build) or the -d/--debug flag was passed.
 bool IsDebugMode();
 
+// Latches the board revision code (from Mbox::GetBoardRevision()) so the
+// helpers below can decode it; call once at startup
+void SetBoardRevision(unsigned int revision);
+
+// Which Pi generation this is, decided by SoC: BCM2836 = Pi 2,
+// BCM2837 = Pi 3 (also late Pi 2s and the Zero 2 W), BCM2711 = Pi 4
+// family, BCM2712 = Pi 5 family. All false until SetBoardRevision() is
+// called with a recognized revision
+bool IsPi2();
+bool IsPi3();
+bool IsPi4();
+bool IsPi5();
+
+// Human-readable model + RAM decoded from the revision code, e.g.
+// "Raspberry Pi 5 8GB"; "Unknown" if the revision was never set
+std::string GetPiModelName();
+
+// System RAM as the kernel sees it, in megabytes. `available_mb` is the
+// kernel's estimate of how much memory apps could still allocate without
+// swapping (more honest than "free", which ignores reclaimable caches)
+struct MemInfo {
+  long long total_mb;
+  long long available_mb;
+};
+
+// Reads MemInfo from /proc/meminfo; std::nullopt if it can't be parsed
+std::optional<MemInfo> GetKernelMemInfo();
+
 #endif // RASPIMON_UTILS_H_

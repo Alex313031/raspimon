@@ -64,7 +64,7 @@ std::optional<std::string> Mbox::VideoCoreGenCommand(const std::string& command)
   // to the firmware, which overwrites it in place with the response.
   //   p[0]    total message size in bytes
   //   p[1]    request/response code (0 = this is a request)
-  //   p[2]    tag id (kGetGencmdResult = "execute a gencmd command")
+  //   p[2]    tag id (kGenCmdTag = "execute a gencmd command")
   //   p[3]    size of the tag's value buffer in bytes
   //   p[4]    tag request/response length
   //   p[5]    value buffer word 0: gencmd error code in the response
@@ -76,7 +76,7 @@ std::optional<std::string> Mbox::VideoCoreGenCommand(const std::string& command)
   p[i++]   = 0;          // size
   p[i++]   = 0x00000000; // process request
 
-  p[i++] = kGetGencmdResult;                      // (the tag id)
+  p[i++] = kGenCmdTag;                            // (the tag id)
   p[i++] = static_cast<unsigned int>(kMaxString); // buffer_len
   p[i++] = 0;                                     // request_len (set to response length)
   p[i++] = 0;                                     // error response
@@ -98,6 +98,28 @@ std::optional<std::string> Mbox::VideoCoreGenCommand(const std::string& command)
   // missing, and the (length-counted) std::string constructor copies it out
   const char* response = reinterpret_cast<const char*>(&p[6]);
   return std::string(response, strnlen(response, kMaxString - 1));
+}
+
+std::optional<unsigned int> Mbox::GetBoardRevision() const {
+  // A minimal property message (see VideoCoreGenCommand for the layout
+  // walkthrough): same framing, but the value buffer is a single 32-bit
+  // word the firmware overwrites with the revision code
+  std::array<unsigned int, 7> p{};
+  p[0] = static_cast<unsigned int>(sizeof(p)); // total size in bytes (28)
+  p[1] = 0x00000000;                           // process request
+  p[2] = kBoardRevTag;                         // board revision tag id
+  p[3] = 4;                                    // value buffer size in bytes
+  p[4] = 0;                                    // request length
+  p[5] = 0;                                    // value buffer, receives the revision
+  p[6] = 0x00000000;                           // end tag
+
+  if (MboxProperty(p.data()) < 0) {
+    return std::nullopt;
+  }
+  if (p[1] != 0x80000000) { // firmware sets this code on success
+    return std::nullopt;
+  }
+  return p[5];
 }
 
 // Runs `command` via gencmd and returns the value after the '=' in the

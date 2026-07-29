@@ -47,9 +47,6 @@ namespace {
       {"RAM PHY", "sdram_p"},
   }};
 
-  // Memory regions queried with `get_mem`
-  constexpr std::array<Sensor, 2> kMem{{{"CPU", "arm"}, {"GPU", "gpu"}}};
-
   // Returns the wider of `width` and the widest label in `sensors`
   template <size_t N>
   constexpr size_t GetWidestLabel(const std::array<Sensor, N>& sensors, size_t width) {
@@ -65,14 +62,24 @@ namespace {
   // Label column width: the widest label across all sensor tables plus one
   // space before the ':', so columns stay aligned when labels change
   constexpr int kLabelWidth = static_cast<int>(
-      GetWidestLabel(kMem, GetWidestLabel(kVolts, GetWidestLabel(kClocks, cstrlen("SOC")))) + 1);
+      GetWidestLabel(kVolts, GetWidestLabel(kClocks, cstrlen("SOC"))) + 1);
 } // namespace
 
 bool GetInfo(const Mbox& mbox) {
   std::ostringstream out;
 
+  PrintOutHeader(out, "Model");
+  out << GetPiModelName() << kEndLine;
+
   PrintOutHeader(out, "Clock Frequencies");
   for (const Sensor& clock : kClocks) {
+    // The Pi 5 moved PWM into the RP1 I/O chip and dropped the H264
+    // encoder block, so the VideoCore can't see either - skip the rows
+    // rather than showing a meaningless 0MHz
+    if (IsPi5() &&
+        (std::strcmp(clock.arg, "pwm") == 0 || std::strcmp(clock.arg, "h264") == 0)) {
+      continue;
+    }
     const std::optional<std::string> hertz = QueryCmd(mbox, std::string("measure_clock ") + clock.arg);
     if (!hertz) {
       return false;
@@ -130,16 +137,31 @@ bool GetInfo(const Mbox& mbox) {
   PrintOutEntry(out, "SOC", degrees.str(), kLabelWidth);
 
   PrintOutHeader(out, "Memory Allocation");
-  for (const Sensor& region : kMem) {
-    const std::optional<std::string> mem = QueryCmd(mbox, std::string("get_mem ") + region.arg);
-    if (!mem) {
+  // CPU RAM comes from the kernel, not the firmware: the mailbox only
+  // describes the first 1GB of address space, so get_mem arm tops out at
+  // 1024MB no matter how much RAM the board has
+  const std::optional<MemInfo> mem = GetKernelMemInfo();
+  if (!mem) {
+    return false;
+  }
+  PrintOutEntry(out, "CPU",
+                std::to_string(mem->total_mb - mem->available_mb) + "/" +
+                    std::to_string(mem->total_mb) + "MB",
+                kLabelWidth);
+  if (IsPi5()) {
+    // The Pi 5 has no static GPU memory split (gpu_mem is ignored); the
+    // GPU allocates from system RAM on demand, so no fixed number exists
+    PrintOutEntry(out, "GPU", "shared (dynamic)", kLabelWidth);
+  } else {
+    const std::optional<std::string> gpu_mem = QueryCmd(mbox, "get_mem gpu");
+    if (!gpu_mem) {
       return false;
     }
-    const std::optional<long long> megabytes = ParseInt(*mem);
+    const std::optional<long long> megabytes = ParseInt(*gpu_mem);
     if (!megabytes) {
       return false;
     }
-    PrintOutEntry(out, region.label, std::to_string(*megabytes) + "MB", kLabelWidth);
+    PrintOutEntry(out, "GPU", std::to_string(*megabytes) + "MB", kLabelWidth);
   }
 
   std::cout << out.str();
@@ -268,6 +290,15 @@ int main(int argc, char* argv[]) {
     // Opens /dev/vcio here; the destructor closes it on any path out of
     // this block (including exceptions), so there is no cleanup code
     const Mbox mbox;
+    // Fetch the board revision once so the IsPi*() helpers and the model
+    // line know what hardware this is; on failure it stays 0 (unknown) and
+    // the generation-gated tweaks simply don't apply
+    if (const std::optional<unsigned int> revision = mbox.GetBoardRevision()) {
+      SetBoardRevision(*revision);
+      if (IsDebugMode()) {
+        std::cerr << "Board revision: 0x" << std::hex << *revision << std::dec << std::endl;
+      }
+    }
     std::signal(SIGINT, HandleSignal);
     std::signal(SIGTERM, HandleSignal);
     if (!RefreshTermOutput(mbox, delay)) {

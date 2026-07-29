@@ -5,7 +5,10 @@
 
 // Mailbox "tag id" that tells the VideoCore firmware to execute a gencmd
 // command (the text commands vcgencmd uses, e.g. "measure_temp")
-inline constexpr unsigned int kGetGencmdResult = 0x00030080; // tag id
+inline constexpr unsigned int kGenCmdTag = 0x00030080; // tag id
+
+// Mailbox tag id that asks the firmware for the board revision code
+inline constexpr unsigned int kBoardRevTag = 0x00010002; // tag id
 
 // The ioctl request code the vcio kernel driver expects. _IOWR() packs the
 // transfer direction (read+write), the driver's magic number (100), a
@@ -31,6 +34,12 @@ class Mbox {
   // returns the raw response (e.g. "frequency(48)=600000000"), or
   // std::nullopt on failure
   std::optional<std::string> VideoCoreGenCommand(const std::string& command) const;
+
+  // Asks the firmware for the board revision code: a bitfield encoding the
+  // model, SoC, and RAM size (the same value shown on the "Revision:" line
+  // of /proc/cpuinfo). Decoded by the IsPi*()/GetPiModelName() helpers in
+  // utils.h. Returns std::nullopt on failure
+  std::optional<unsigned int> GetBoardRevision() const;
 
  private:
   // use ioctl to send mbox property message, buff receives data
