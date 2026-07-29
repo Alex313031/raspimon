@@ -4,6 +4,10 @@
 
 #include "utils.h"
 
+// Defined here so it lives with its extern declaration in utils.h; set by
+// ParseOptions() when -d/--debug is passed
+bool want_debug = false;
+
 std::optional<long long> ParseInt(const std::string& in) {
   try {
     return std::stoll(in);
@@ -49,4 +53,8 @@ void HandleSignal(int signum) {
   // "quit by signal N" (128 + N, e.g. Ctrl+C -> 130) so scripts can tell
   // a signal quit from success (0) or a real failure (1)
   _exit(128 + signum);
+}
+
+bool IsDebugMode() {
+  return is_debug || want_debug;
 }

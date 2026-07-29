@@ -147,7 +147,7 @@ bool GetInfo(const Mbox& mbox) {
 }
 
 bool RefreshTermOutput(const Mbox& mbox, const std::chrono::milliseconds delay) {
-  if (is_debug) {
+  if (IsDebugMode()) {
     const long kDelay = delay.count();
     // stderr: on stdout the ESC[2J clear below would erase this instantly,
     // and redirecting stderr keeps it out of the dashboard entirely
@@ -183,10 +183,11 @@ void ShowHelp() {
                "Displays clock frequencies, voltages, temperatures, and memory\n"
                "allocation at a glance, refreshing periodically.\n\n"
                "Options:\n"
-               "  -t <seconds>   Refresh every <seconds> seconds (default 1)\n"
-               "  -f             Display temperatures in Fahrenheit\n"
-               "  -v             Show program version\n"
-               "  -h             Show this help message\n";
+               "  -t, --time <seconds>   Refresh every <seconds> seconds (default 1)\n"
+               "  -f, --fahrenheit       Display temperatures in Fahrenheit\n"
+               "  -d, --debug            Print extra debug output to stderr\n"
+               "  -v, --version          Show program version\n"
+               "  -h, --help             Show this help message\n";
 }
 
 void ShowVersion() {
@@ -194,16 +195,31 @@ void ShowVersion() {
   std::cout << kAppName << " v" << app_ver << std::endl;
 }
 
-int main(int argc, char* argv[]) {
-  std::chrono::milliseconds delay = kDefaultDelayMs;
+std::optional<int> ParseOptions(int argc, char* argv[], std::chrono::milliseconds& delay) {
   int opt;
 
-  // getopt() is the standard POSIX command-line parser (no Win32
-  // equivalent - closest is manually walking argv). The "t:fvh" string
-  // declares the valid options; the ':' means -t takes an argument, which
-  // getopt delivers through the global `optarg`. Returns one option
-  // character per call, -1 when done
-  while ((opt = getopt(argc, argv, "t:fvh")) != -1) {
+  // getopt_long() is the GNU extension of getopt(), the standard POSIX
+  // command-line parser (no Win32 equivalent - closest is manually walking
+  // argv). The "t:fvh" string declares the short options: one letter per
+  // flag, and a ':' after a letter means that flag requires a value, which
+  // is delivered through the global `optarg` (so "t:" = "-t <seconds>").
+  // Each entry in the table below maps a --long spelling to the same
+  // character its short option returns, so one switch handles both
+  // (--time also accepts "--time=2" and "--time 2"). Returns one option
+  // character per call, '?' for anything unrecognized, -1 when done.
+  //
+  // To add a new flag: add its letter to the string (plus ':' if it takes
+  // a value), a row in the table, a case in the switch, and a line in
+  // ShowHelp()
+  static constexpr struct option kLongOptions[] = {
+      {"time", required_argument, nullptr, 't'},
+      {"fahrenheit", no_argument, nullptr, 'f'},
+      {"debug", no_argument, nullptr, 'd'},
+      {"version", no_argument, nullptr, 'v'},
+      {"help", no_argument, nullptr, 'h'},
+      {nullptr, 0, nullptr, 0}, // all-zeros terminator marks the table's end
+  };
+  while ((opt = getopt_long(argc, argv, "t:fdvh", kLongOptions, nullptr)) != -1) {
     switch (opt) {
       case 't': {
         double seconds = 0.0;
@@ -220,6 +236,9 @@ int main(int argc, char* argv[]) {
             std::chrono::duration<double>(seconds));
         break;
       }
+      case 'd':
+        want_debug = true;
+        break;
       case 'f':
         use_fahrenheit = true;
         break;
@@ -233,6 +252,16 @@ int main(int argc, char* argv[]) {
         ShowHelp();
         return EXIT_FAILURE;
     }
+  }
+  return std::nullopt;
+}
+
+int main(int argc, char* argv[]) {
+  std::chrono::milliseconds delay = kDefaultDelayMs;
+  // A returned value means a flag already did its job (-h/-v printed) or
+  // the command line was invalid; either way, quit with that exit code
+  if (const std::optional<int> exit_code = ParseOptions(argc, argv, delay)) {
+    return *exit_code;
   }
 
   try {

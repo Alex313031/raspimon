@@ -3,6 +3,9 @@
 
 #include "pch.h"
 
+// Whether to use debug mode, even in a release build, set by cmdline flags.
+extern bool want_debug;
+
 // The display is drawn with ANSI/VT escape sequences: control codes
 // written to stdout that the terminal interprets instead of printing
 // (Windows Terminal and modern conhost understand the same codes, as
@@ -39,5 +42,9 @@ void PrintOutEntry(std::ostream& out, const std::string& name, const std::string
 
 // Handles interrupt signals; `signum` is the number of the signal that fired
 void HandleSignal(int signum);
+
+// Whether to output extra debug information: true when either DEBUG/_DEBUG
+// is defined (debug build) or the -d/--debug flag was passed.
+bool IsDebugMode();
 
 #endif // RASPIMON_UTILS_H_

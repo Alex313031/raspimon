@@ -33,7 +33,7 @@ class Mbox {
   std::optional<std::string> VideoCoreGenCommand(const std::string& command) const;
 
  private:
-  // use ioctl to send mbox property message, buff recieves data
+  // use ioctl to send mbox property message, buff receives data
   int MboxProperty(void* buff) const;
 
   // The "file descriptor" from open(): a small integer handle to the open

@@ -8,7 +8,7 @@
 // Adhere to semver -> semver.org
 #define MAJOR_VERSION 1
 #define MINOR_VERSION 0
-#define BUILD_VERSION 3
+#define BUILD_VERSION 4
 
 // Macro to convert to string
 #if !defined(STRINGIZE)
@@ -33,6 +33,11 @@ struct Sensor {
   const char* label;
   const char* arg;
 };
+
+// Parses the command line, applying flag side effects (like -f) and filling
+// in `delay`. Returns std::nullopt if the program should keep running, or
+// the process exit code to quit with (after -h/-v, or on an invalid flag)
+std::optional<int> ParseOptions(int argc, char* argv[], std::chrono::milliseconds& delay);
 
 // Shows usage help message.
 void ShowHelp();

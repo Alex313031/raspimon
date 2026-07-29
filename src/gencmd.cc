@@ -8,6 +8,7 @@
 // path with CreateFile() and calling DeviceIoControl() on the handle.
 
 #include "gencmd.h"
+#include "utils.h"
 
 Mbox::Mbox() {
   // open a char device file used for communicating with kernel mbox driver
@@ -52,7 +53,7 @@ std::optional<std::string> Mbox::VideoCoreGenCommand(const std::string& command)
     std::cerr << "gencmd command length too long: " << command.size() << std::endl;
     return std::nullopt;
   } else {
-    if (is_debug) {
+    if (IsDebugMode()) {
       // stderr, so `raspimon 2>debug.log` captures the trace without the
       // per-query chatter garbling the dashboard on stdout
       std::cerr << "Querying VideoCore with command: " << command << std::endl;
@@ -104,7 +105,7 @@ std::optional<std::string> Mbox::VideoCoreGenCommand(const std::string& command)
 std::optional<std::string> QueryCmd(const Mbox& mbox, const std::string& command) {
   std::optional<std::string> response = mbox.VideoCoreGenCommand(command);
   if (!response) {
-    if (is_debug) {
+    if (IsDebugMode()) {
       std::cerr << "Failed to run command: " << command << std::endl;
     }
     return std::nullopt;

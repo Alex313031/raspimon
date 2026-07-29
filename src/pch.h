@@ -17,6 +17,7 @@
 
 // Linux system headers
 #include <fcntl.h>     // open() and its O_* access flags (like CreateFile() on Win32)
+#include <getopt.h>    // getopt_long() and struct option, for parsing --long flags
 #include <sys/ioctl.h> // ioctl(): device I/O control (like DeviceIoControl() on Win32)
 #include <unistd.h>    // Core POSIX syscall wrappers: close(), write(), getopt()
 
