@@ -54,7 +54,7 @@ namespace {
   // (VDD2 feeds the LPDDR4X RAM core, VDDQ feeds its I/O lines)
   constexpr std::array<Sensor, 14> kPmicRails{{
       {"CPU", "VDD_CORE_V"},
-      {"RAM Core", "DDR_VDD2_V"},
+      {"RAM DDR", "DDR_VDD2_V"},
       {"RAM I/O", "DDR_VDDQ_V"},
       {"3.3V System", "3V3_SYS_V"},
       {"1.8V System", "1V8_SYS_V"},
@@ -180,7 +180,7 @@ namespace {
   }
 } // namespace
 
-bool GetInfo(const Mbox& mbox) {
+bool GetInfo(const Mbox& mbox, const int max_lines) {
   std::ostringstream out;
 
   PrintOutHeader(out, "Model");
@@ -274,7 +274,23 @@ bool GetInfo(const Mbox& mbox) {
     PrintOutEntry(out, "GPU", std::to_string(*megabytes) + "MB", kLabelWidth);
   }
 
-  std::cout << out.str();
+  // If the frame is taller than the window, drop the bottom rather than
+  // let the overflow scroll the terminal every refresh
+  std::string frame = out.str();
+  if (max_lines > 0) {
+    size_t pos = 0;
+    for (int line = 0; line < max_lines; ++line) {
+      pos = frame.find('\n', pos);
+      if (pos == std::string::npos) {
+        break; // fewer lines than the limit: nothing to cut
+      }
+      ++pos; // step past the newline
+    }
+    if (pos != std::string::npos && pos < frame.size()) {
+      frame.resize(pos);
+    }
+  }
+  std::cout << frame;
   return true;
 }
 
@@ -285,14 +301,27 @@ bool RefreshTermOutput(const Mbox& mbox, const std::chrono::milliseconds delay) 
     // and redirecting stderr keeps it out of the dashboard entirely
     std::cerr << "Using " << kDelay << " ms. delay." << std::endl;
   }
-  // Hide the cursor and clear the terminal once, then redraw in place
-  // each cycle to avoid flicker: home the cursor (ESC[H), repaint the
-  // frame over the old one, and erase whatever is left below it (ESC[J)
-  std::cout << "\033[?25l\033[2J";
+  // Switch to the terminal's alternate screen buffer (ESC[?1049h): a
+  // second screen with no scrollback, the same trick ncurses apps like
+  // htop use - the dashboard never pollutes the shell's history, and
+  // quitting restores exactly what was on screen before. Then hide the
+  // cursor, clear once, and redraw in place each cycle: home the cursor
+  // (ESC[H), repaint the frame over the old one, and erase whatever is
+  // left below it (ESC[J)
+  std::cout << "\033[?1049h\033[?25l\033[2J";
   bool ok = true;
   for (;;) {
+    // Ask the kernel how tall the window is each frame (so live terminal
+    // resizes are picked up) and clamp the frame one short of it: a
+    // newline printed on the bottom row would scroll everything up a line.
+    // If stdout isn't a tty the ioctl fails and 0 = no clamping
+    winsize window{};
+    int max_lines = 0;
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &window) == 0 && window.ws_row > 0) {
+      max_lines = window.ws_row - 1;
+    }
     std::cout << "\033[H";
-    ok = GetInfo(mbox);
+    ok = GetInfo(mbox, max_lines);
     if (!ok) {
       break;
     }
@@ -301,9 +330,11 @@ bool RefreshTermOutput(const Mbox& mbox, const std::chrono::milliseconds delay) 
       break; // Q or Esc pressed: a clean, deliberate quit
     }
   }
-  // Restore the cursor before reporting any error, so the message lands
-  // below the dashboard instead of overwriting it
-  std::cout << "\033[?25h" << std::flush;
+  // Leave the alternate screen (bringing back whatever the shell had) and
+  // restore the cursor before reporting any error, so the message lands
+  // in the normal buffer under the old prompt, not on the vanished
+  // dashboard
+  std::cout << "\033[?1049l\033[?25h" << std::flush;
   if (!ok) {
     std::cerr << kAppName << ": VideoCore query failed, exiting" << std::endl;
   }

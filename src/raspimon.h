@@ -45,8 +45,10 @@ void ShowHelp();
 // Shows version info.
 void ShowVersion();
 
-// Collects system info and displays it once.
-bool GetInfo(const Mbox& mbox);
+// Collects system info and displays it once, printing at most `max_lines`
+// lines (0 = no limit), so a frame taller than the terminal window can be
+// cut off instead of making the terminal scroll.
+bool GetInfo(const Mbox& mbox, int max_lines = 0);
 
 // Displays output, refreshing periodically every `delay`. Returns false
 // if a VideoCore query failed and the display loop had to stop

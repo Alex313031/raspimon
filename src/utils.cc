@@ -74,7 +74,10 @@ void HandleSignal(int signum) {
   if (termios_saved) {
     tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
   }
-  ssize_t restored = write(STDOUT_FILENO, "\033[?25h\n", 7);
+  // Leave the alternate screen buffer and restore the cursor in one raw
+  // write (a no-op if the display loop never started)
+  constexpr char kRestore[] = "\033[?1049l\033[?25h\n";
+  ssize_t restored          = write(STDOUT_FILENO, kRestore, sizeof(kRestore) - 1);
   (void)restored;
   // The argument a signal handler receives is the signal number (SIGINT=2,
   // SIGTERM=15), not an exit code. Exit with the shell convention for
