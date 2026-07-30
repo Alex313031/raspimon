@@ -186,7 +186,7 @@ bool GetInfo(const Mbox& mbox, const int max_lines) {
   std::ostringstream out;
 
   PrintOutHeader(out, "Model");
-  out << "  " << Color(kColorValue) << GetPiModelName() << Color(kColorReset) << kEndLine;
+  out << "    " << Color(kColorValue) << GetPiModelName() << Color(kColorReset) << kEndLine;
 
   PrintOutHeader(out, "Clock Frequencies");
   for (const Sensor& clock : kClocks) {
@@ -279,7 +279,7 @@ bool GetInfo(const Mbox& mbox, const int max_lines) {
   if (IsPi5()) {
     // The Pi 5 has no static GPU memory split (gpu_mem is ignored); the
     // GPU allocates from system RAM on demand, so no fixed number exists
-    PrintOutEntry(out, "GPU", "(shared dynamic)", kLabelWidth);
+    PrintOutEntry(out, "GPU", "(shared)", kLabelWidth);
   } else {
     const std::optional<std::string> gpu_mem = QueryCmd(mbox, "get_mem gpu");
     if (!gpu_mem) {
