@@ -3,6 +3,7 @@
 
 // C++ Runtime Headers
 #include <array>     // std::array
+#include <cerrno>    // errno and the E* error constants (like GetLastError() codes)
 #include <chrono>    // std::chrono::milliseconds
 #include <csignal>   // std::signal() and the SIG* constants
 #include <cstdlib>   // EXIT_SUCCESS / EXIT_FAILURE
@@ -21,7 +22,9 @@
 // Linux system headers
 #include <fcntl.h>     // open() and its O_* access flags (like CreateFile() on Win32)
 #include <getopt.h>    // getopt_long() and struct option, for parsing --long flags
+#include <poll.h>      // poll(): wait for fd readiness with a timeout (like WaitForSingleObject())
 #include <sys/ioctl.h> // ioctl(): device I/O control (like DeviceIoControl() on Win32)
+#include <termios.h>   // tcgetattr()/tcsetattr(): terminal input modes (like SetConsoleMode())
 #include <unistd.h>    // Core POSIX syscall wrappers: close(), write(), getopt()
 
 // Convert compiler defines to usable bool

@@ -297,7 +297,9 @@ bool RefreshTermOutput(const Mbox& mbox, const std::chrono::milliseconds delay) 
       break;
     }
     std::cout << "\033[J" << std::flush;
-    std::this_thread::sleep_for(delay);
+    if (WaitForQuit(delay)) {
+      break; // Q or Esc pressed: a clean, deliberate quit
+    }
   }
   // Restore the cursor before reporting any error, so the message lands
   // below the dashboard instead of overwriting it
@@ -319,7 +321,9 @@ void ShowHelp() {
                "  -f, --fahrenheit       Display temperatures in Fahrenheit\n"
                "  -d, --debug            Print extra debug output to stderr\n"
                "  -v, --version          Show program version\n"
-               "  -h, --help             Show this help message\n";
+               "  -h, --help             Show this help message\n"
+               "\n"
+               "Press Q or Esc while running to quit.\n";
 }
 
 void ShowVersion() {
@@ -411,6 +415,9 @@ int main(int argc, char* argv[]) {
     }
     std::signal(SIGINT, HandleSignal);
     std::signal(SIGTERM, HandleSignal);
+    // Raw input for the whole run so Q/Esc arrive without needing Enter;
+    // the destructor (or HandleSignal) restores the terminal on the way out
+    const RawTerminal raw_terminal;
     if (!RefreshTermOutput(mbox, delay)) {
       return EXIT_FAILURE;
     }
