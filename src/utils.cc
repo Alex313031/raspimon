@@ -55,7 +55,7 @@ void PrintOutHeader(std::ostream& out, const std::string& title) {
 
 void PrintOutEntry(std::ostream& out, const std::string& name, const std::string& value,
                    int width) {
-  out << "      " << std::left << std::setw(width) << name << ": " << value << kEndLine;
+  out << "  " << std::left << std::setw(width) << name << ": " << value << kEndLine;
 }
 
 // Handles SIGINT (Ctrl+C) and SIGTERM (polite kill) - POSIX signals are
@@ -218,7 +218,7 @@ std::string GetPiModelName() {
   // RAM size field: 0 = 256MB doubling each step up to 6 = 16GB
   constexpr std::array<const char*, 7> kRamSizes{"256MB", "512MB", "1GB", "2GB",
                                                  "4GB",   "8GB",   "16GB"};
-  std::string name = std::string(" Pi Model ") + model;
+  std::string name = std::string("Pi Model ") + model;
   const unsigned int ram = (board_revision >> 20) & 0x7;
   if (ram < kRamSizes.size()) {
     name += std::string(" ") + kRamSizes[ram];
@@ -250,4 +250,22 @@ std::optional<MemInfo> GetKernelMemInfo() {
     return std::nullopt;
   }
   return MemInfo{*total_kb / 1024, *available_kb / 1024};
+}
+
+std::optional<long long> GetFanRpm() {
+  // The fan's tachometer is exposed by the kernel's hwmon subsystem as a
+  // text file holding the RPM. The hwmonN directory in the middle of the
+  // path varies per boot, so expand the wildcard the way the shell would
+  glob_t matches{};
+  std::optional<long long> rpm;
+  if (glob("/sys/devices/platform/cooling_fan/hwmon/*/fan1_input", 0, nullptr, &matches) == 0 &&
+      matches.gl_pathc > 0) {
+    std::ifstream fan(matches.gl_pathv[0]);
+    std::string line;
+    if (fan.is_open() && std::getline(fan, line)) {
+      rpm = ParseInt(line);
+    }
+  }
+  globfree(&matches); // required even when glob() found nothing
+  return rpm;
 }

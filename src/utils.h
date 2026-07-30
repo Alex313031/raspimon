@@ -36,7 +36,7 @@ std::optional<double> ParseDouble(const std::string& in);
 // Prints a section header padded with dashes to a fixed width
 void PrintOutHeader(std::ostream& out, const std::string& title);
 
-// Prints one "      name    : value" entry, padding `name` to `width` columns
+// Prints one "  name    : value" entry, padding `name` to `width` columns
 void PrintOutEntry(std::ostream& out, const std::string& name, const std::string& value,
                    int width);
 
@@ -94,5 +94,9 @@ struct MemInfo {
 
 // Reads MemInfo from /proc/meminfo; std::nullopt if it can't be parsed
 std::optional<MemInfo> GetKernelMemInfo();
+
+// Reads the fan tachometer (RPM) from the kernel's hwmon interface - the
+// fan on the Pi 5's dedicated fan header; std::nullopt if no fan is there
+std::optional<long long> GetFanRpm();
 
 #endif // RASPIMON_UTILS_H_

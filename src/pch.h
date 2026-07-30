@@ -22,6 +22,7 @@
 // Linux system headers
 #include <fcntl.h>     // open() and its O_* access flags (like CreateFile() on Win32)
 #include <getopt.h>    // getopt_long() and struct option, for parsing --long flags
+#include <glob.h>      // glob(): expand shell wildcards (like FindFirstFile() on Win32)
 #include <poll.h>      // poll(): wait for fd readiness with a timeout (like WaitForSingleObject())
 #include <sys/ioctl.h> // ioctl(): device I/O control (like DeviceIoControl() on Win32)
 #include <termios.h>   // tcgetattr()/tcsetattr(): terminal input modes (like SetConsoleMode())

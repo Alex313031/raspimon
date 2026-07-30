@@ -82,10 +82,12 @@ namespace {
   }
 
   // Label column width: the widest label across all sensor tables plus one
-  // space before the ':', so columns stay aligned when labels change
+  // space before the ':', so columns stay aligned when labels change. The
+  // seed is the widest label printed outside the tables ("Fan Speed",
+  // "SOC Temp", "CPU", "GPU")
   constexpr int kLabelWidth = static_cast<int>(
       GetWidestLabel(kPmicRails,
-                     GetWidestLabel(kVolts, GetWidestLabel(kClocks, cstrlen("SOC")))) +
+                     GetWidestLabel(kVolts, GetWidestLabel(kClocks, cstrlen("Fan Speed")))) +
       1);
 
   // Clock rows to skip because a given generation doesn't have the
@@ -110,7 +112,7 @@ namespace {
   std::string FormatVolts(double volts) {
     std::ostringstream value;
     value << std::fixed << std::setprecision(3) << volts;
-    return value.str() + "V";
+    return value.str() + " V.";
   }
 
   // The Pi 5 manages power with a dedicated PMIC chip, and the old
@@ -184,7 +186,7 @@ bool GetInfo(const Mbox& mbox, const int max_lines) {
   std::ostringstream out;
 
   PrintOutHeader(out, "Model");
-  out << GetPiModelName() << kEndLine;
+  out << "  " << GetPiModelName() << kEndLine;
 
   PrintOutHeader(out, "Clock Frequencies");
   for (const Sensor& clock : kClocks) {
@@ -203,7 +205,7 @@ bool GetInfo(const Mbox& mbox, const int max_lines) {
     // 700.5 -> "700.5" (std::to_string on a double would print "600.000000")
     std::ostringstream mhz;
     mhz << (*freq / 1000000.0);
-    PrintOutEntry(out, clock.label, mhz.str() + "MHz", kLabelWidth);
+    PrintOutEntry(out, clock.label, mhz.str() + " MHz.", kLabelWidth);
   }
 
   PrintOutHeader(out, "Voltages");
@@ -240,11 +242,19 @@ bool GetInfo(const Mbox& mbox, const int max_lines) {
   std::ostringstream degrees;
   degrees << std::fixed << std::setprecision(1);
   if (use_fahrenheit) {
-    degrees << (*celsius * 9.0 / 5.0 + 32.0) << "F";
+    degrees << (*celsius * 9.0 / 5.0 + 32.0) << " " << kDegreeSymbol << "F.";
   } else {
-    degrees << *celsius << "C";
+    degrees << *celsius << " " << kDegreeSymbol << "C.";
   }
-  PrintOutEntry(out, "SOC", degrees.str(), kLabelWidth);
+  PrintOutEntry(out, "SOC Temp", degrees.str(), kLabelWidth);
+  if (IsPi5()) {
+    // The Pi 5's dedicated fan header reports the fan's tachometer through
+    // the kernel; the row only appears when a fan is actually plugged in
+    const std::optional<long long> rpm = GetFanRpm();
+    if (rpm) {
+      PrintOutEntry(out, "Fan Speed", std::to_string(*rpm) + " RPM.", kLabelWidth);
+    }
+  }
 
   PrintOutHeader(out, "Memory Allocation");
   // CPU RAM comes from the kernel, not the firmware: the mailbox only
@@ -256,12 +266,12 @@ bool GetInfo(const Mbox& mbox, const int max_lines) {
   }
   PrintOutEntry(out, "CPU",
                 std::to_string(mem->total_mb - mem->available_mb) + "/" +
-                    std::to_string(mem->total_mb) + "MB",
+                    std::to_string(mem->total_mb) + " MB.",
                 kLabelWidth);
   if (IsPi5()) {
     // The Pi 5 has no static GPU memory split (gpu_mem is ignored); the
     // GPU allocates from system RAM on demand, so no fixed number exists
-    PrintOutEntry(out, "GPU", "(dynamic)", kLabelWidth);
+    PrintOutEntry(out, "GPU", "(shared dynamic)", kLabelWidth);
   } else {
     const std::optional<std::string> gpu_mem = QueryCmd(mbox, "get_mem gpu");
     if (!gpu_mem) {
@@ -271,7 +281,7 @@ bool GetInfo(const Mbox& mbox, const int max_lines) {
     if (!megabytes) {
       return false;
     }
-    PrintOutEntry(out, "GPU", std::to_string(*megabytes) + "MB", kLabelWidth);
+    PrintOutEntry(out, "GPU", std::to_string(*megabytes) + " MB.", kLabelWidth);
   }
 
   // If the frame is taller than the window, drop the bottom rather than
@@ -360,6 +370,8 @@ void ShowHelp() {
 void ShowVersion() {
   static constexpr char app_ver[] = VERSION_STRING;
   std::cout << kAppName << " v" << app_ver << std::endl;
+  std::cout << "Copyright " << kCopyrightSymbol << " "
+            << COPYRIGHT_YEAR << " Alex313031." << std::endl;
 }
 
 std::optional<int> ParseOptions(int argc, char* argv[], std::chrono::milliseconds& delay) {
