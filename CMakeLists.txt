@@ -37,7 +37,6 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Sources
 add_executable(raspimon
   src/gencmd.cc
-  src/pch.cc
   src/raspimon.cc
   src/utils.cc
 )

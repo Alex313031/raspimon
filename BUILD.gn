@@ -6,15 +6,14 @@ executable("raspimon") {
   configs += [ ":raspimon_config" ]
 
   # GCC-style PCH: GN precompiles precompiled_source (the header itself) into
-  # a .gch and adds "-include pch.h" to every compile. precompiled_header is
-  # only read by MSVC-style PCH toolchains, where it must match the string in
-  # the #include directive and pch.cc becomes the /Yc source.
-  precompiled_header = "pch.h"
+  # a .gch and force-includes it into every compile. precompiled_header is
+  # only read by MSVC-style PCH toolchains - which would also need a pch.cc
+  # as the /Yc source; GCC-style needs no source file, hence none exists.
+  precompiled_header = "src/pch.h"
   precompiled_source = "src/pch.h"
   sources = [
     "src/gencmd.cc",
     "src/gencmd.h",
-    "src/pch.cc",
     "src/pch.h",
     "src/raspimon.cc",
     "src/raspimon.h",

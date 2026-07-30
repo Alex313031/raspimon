@@ -5,7 +5,7 @@
 SRCDIR  := src
 TARGET  := raspimon
 
-OBJECTS := raspimon.o gencmd.o utils.o pch.o
+OBJECTS := raspimon.o gencmd.o utils.o
 HEADERS := $(SRCDIR)/raspimon.h $(SRCDIR)/gencmd.h $(SRCDIR)/utils.h $(SRCDIR)/pch.h
 
 # Compiler toolchain defaults
