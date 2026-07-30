@@ -8,6 +8,7 @@
 // path with CreateFile() and calling DeviceIoControl() on the handle.
 
 #include "gencmd.h"
+
 #include "utils.h"
 
 Mbox::Mbox() {

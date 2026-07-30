@@ -60,14 +60,16 @@ void PrintOutHeader(std::ostream& out, const std::string& title) {
   out << Color(kColorHeader) << line << Color(kColorReset) << kEndLine;
 }
 
-void PrintOutEntry(std::ostream& out, const std::string& name, const std::string& value,
-                   int width, const char* value_color) {
+void PrintOutEntry(std::ostream& out,
+                   const std::string& name,
+                   const std::string& value,
+                   int width,
+                   const char* value_color) {
   // The color codes go AROUND the setw() field, never inside it: setw
   // pads by byte count, and escape codes are bytes with zero visible
   // width, so a code inside the field would shrink the padding
-  out << "  " << Color(kColorLabel) << std::left << std::setw(width) << name
-      << Color(kColorReset) << ": " << Color(value_color) << value << Color(kColorReset)
-      << kEndLine;
+  out << "  " << Color(kColorLabel) << std::left << std::setw(width) << name << Color(kColorReset)
+      << ": " << Color(value_color) << value << Color(kColorReset) << kEndLine;
 }
 
 // Handles SIGINT (Ctrl+C) and SIGTERM (polite kill) - POSIX signals are
@@ -105,8 +107,8 @@ RawTerminal::RawTerminal() {
   if (tcgetattr(STDIN_FILENO, &orig_termios) != 0) {
     return;
   }
-  termios raw    = orig_termios;
-  termios_saved  = true;
+  termios raw   = orig_termios;
+  termios_saved = true;
   // ICANON off = deliver bytes as they are typed instead of buffering a
   // whole line until Enter; ECHO off = don't print keys over the dashboard
   raw.c_lflag &= ~(ICANON | ECHO);
@@ -132,8 +134,7 @@ bool WaitForQuit(std::chrono::milliseconds delay) {
   // Instead of sleeping, poll() stdin with the refresh delay as timeout:
   // it returns as soon as a key arrives or the time runs out, whichever
   // comes first (like WaitForSingleObject() on the console handle)
-  const std::chrono::steady_clock::time_point deadline =
-      std::chrono::steady_clock::now() + delay;
+  const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + delay;
   for (;;) {
     const std::chrono::milliseconds remaining =
         std::chrono::duration_cast<std::chrono::milliseconds>(deadline -
@@ -208,29 +209,65 @@ std::string GetPiModelName() {
   }
   const char* model;
   switch ((board_revision >> 4) & 0xFF) { // model type field
-    case 0x04: model = "2B"; break;
-    case 0x08: model = "3B"; break;
-    case 0x09: model = "Zero"; break;
-    case 0x0a: model = "CM3"; break;
-    case 0x0c: model = "Zero W"; break;
-    case 0x0d: model = "3B+"; break;
-    case 0x0e: model = "3A+"; break;
-    case 0x10: model = "CM3+"; break;
-    case 0x11: model = "4B"; break;
-    case 0x12: model = "Zero 2 W"; break;
-    case 0x13: model = "400"; break;
-    case 0x14: model = "CM4"; break;
-    case 0x15: model = "CM4S"; break;
-    case 0x17: model = "5"; break;
-    case 0x18: model = "CM5"; break;
-    case 0x19: model = "500"; break;
-    case 0x1a: model = "CM5 Lite"; break;
-    default:   model = "(Unknown Model)"; break;
+    case 0x04:
+      model = "2B";
+      break;
+    case 0x08:
+      model = "3B";
+      break;
+    case 0x09:
+      model = "Zero";
+      break;
+    case 0x0a:
+      model = "CM3";
+      break;
+    case 0x0c:
+      model = "Zero W";
+      break;
+    case 0x0d:
+      model = "3B+";
+      break;
+    case 0x0e:
+      model = "3A+";
+      break;
+    case 0x10:
+      model = "CM3+";
+      break;
+    case 0x11:
+      model = "4B";
+      break;
+    case 0x12:
+      model = "Zero 2 W";
+      break;
+    case 0x13:
+      model = "400";
+      break;
+    case 0x14:
+      model = "CM4";
+      break;
+    case 0x15:
+      model = "CM4S";
+      break;
+    case 0x17:
+      model = "5";
+      break;
+    case 0x18:
+      model = "CM5";
+      break;
+    case 0x19:
+      model = "500";
+      break;
+    case 0x1a:
+      model = "CM5 Lite";
+      break;
+    default:
+      model = "(Unknown Model)";
+      break;
   }
   // RAM size field: 0 = 256MB doubling each step up to 6 = 16GB
   constexpr std::array<const char*, 7> kRamSizes{"256MB", "512MB", "1GB", "2GB",
                                                  "4GB",   "8GB",   "16GB"};
-  std::string name = std::string("Pi Model ") + model;
+  std::string name       = std::string("Pi Model ") + model;
   const unsigned int ram = (board_revision >> 20) & 0x7;
   if (ram < kRamSizes.size()) {
     name += std::string(" ") + kRamSizes[ram];

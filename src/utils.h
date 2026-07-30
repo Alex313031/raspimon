@@ -57,8 +57,11 @@ void PrintOutHeader(std::ostream& out, const std::string& title);
 // Prints one "  name    : value" entry, padding `name` to `width` columns.
 // `value_color` tints the value; pass kColorWarn/kColorAlert to make a
 // reading stand out (temperature does this by threshold)
-void PrintOutEntry(std::ostream& out, const std::string& name, const std::string& value,
-                   int width, const char* value_color = kColorValue);
+void PrintOutEntry(std::ostream& out,
+                   const std::string& name,
+                   const std::string& value,
+                   int width,
+                   const char* value_color = kColorValue);
 
 // Handles interrupt signals; `signum` is the number of the signal that fired
 void HandleSignal(int signum);

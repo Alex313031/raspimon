@@ -96,9 +96,8 @@ namespace {
   // firmware's isp clock just echoes the core clock there); emmc2, the
   // Pi 4's real SD-card controller, only answers on a Pi 4
   bool SkipClock(const Sensor& clock) {
-    if (IsPi5() &&
-        (std::strcmp(clock.arg, "pwm") == 0 || std::strcmp(clock.arg, "h264") == 0 ||
-         std::strcmp(clock.arg, "isp") == 0)) {
+    if (IsPi5() && (std::strcmp(clock.arg, "pwm") == 0 || std::strcmp(clock.arg, "h264") == 0 ||
+                    std::strcmp(clock.arg, "isp") == 0)) {
       return true;
     }
     if (!IsPi4() && std::strcmp(clock.arg, "emmc2") == 0) {
@@ -193,7 +192,8 @@ bool GetInfo(const Mbox& mbox, const int max_lines) {
     if (SkipClock(clock)) {
       continue;
     }
-    const std::optional<std::string> hertz = QueryCmd(mbox, std::string("measure_clock ") + clock.arg);
+    const std::optional<std::string> hertz =
+        QueryCmd(mbox, std::string("measure_clock ") + clock.arg);
     if (!hertz) {
       return false;
     }
@@ -379,8 +379,8 @@ void ShowHelp() {
 void ShowVersion() {
   static constexpr char app_ver[] = VERSION_STRING;
   std::cout << kAppName << " v" << app_ver << std::endl;
-  std::cout << "Copyright " << kCopyrightSymbol << " "
-            << COPYRIGHT_YEAR << " Alex313031." << std::endl;
+  std::cout << "Copyright " << kCopyrightSymbol << " " << COPYRIGHT_YEAR << " Alex313031."
+            << std::endl;
 }
 
 std::optional<int> ParseOptions(int argc, char* argv[], std::chrono::milliseconds& delay) {
