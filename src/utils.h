@@ -20,6 +20,24 @@ extern bool want_debug;
 // don't leave leftover characters on screen
 inline constexpr char kEndLine[] = "\033[K\n";
 
+// Whether to emit ANSI color codes; decided once at startup (on when
+// stdout is a terminal, vetoed by the NO_COLOR convention or --no-color)
+extern bool use_color;
+
+// The dashboard's color scheme, as SGR ("Select Graphic Rendition")
+// escape codes - ESC[<attributes>m, where 1 = bold and 30-37/90-97 pick
+// the foreground color. Named by role, so retheming is a one-line change
+inline constexpr char kColorReset[]  = "\033[0m";    // back to defaults
+inline constexpr char kColorHeader[] = "\033[1;32m"; // bold green
+inline constexpr char kColorLabel[]  = "\033[1;37m"; // bold white
+inline constexpr char kColorValue[]  = "\033[1;36m"; // bold cyan
+inline constexpr char kColorWarn[]   = "\033[1;33m"; // bold yellow
+inline constexpr char kColorAlert[]  = "\033[1;31m"; // bold red
+
+// Returns `color` when color is on and "" when off, so call sites can
+// stream it unconditionally
+const char* Color(const char* color);
+
 // Compile-time strlen, for computing label column widths
 constexpr size_t cstrlen(const char* in) {
   size_t len = 0;
@@ -36,9 +54,11 @@ std::optional<double> ParseDouble(const std::string& in);
 // Prints a section header padded with dashes to a fixed width
 void PrintOutHeader(std::ostream& out, const std::string& title);
 
-// Prints one "  name    : value" entry, padding `name` to `width` columns
+// Prints one "  name    : value" entry, padding `name` to `width` columns.
+// `value_color` tints the value; pass kColorWarn/kColorAlert to make a
+// reading stand out (temperature does this by threshold)
 void PrintOutEntry(std::ostream& out, const std::string& name, const std::string& value,
-                   int width);
+                   int width, const char* value_color = kColorValue);
 
 // Handles interrupt signals; `signum` is the number of the signal that fired
 void HandleSignal(int signum);

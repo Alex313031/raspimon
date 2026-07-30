@@ -7,8 +7,8 @@
 // These next few lines are where we control version number
 // Adhere to semver -> semver.org
 #define MAJOR_VERSION 1
-#define MINOR_VERSION 0
-#define BUILD_VERSION 9
+#define MINOR_VERSION 1
+#define BUILD_VERSION 0
 
 #define COPYRIGHT_YEAR "2026" // For ShowVersion()
 

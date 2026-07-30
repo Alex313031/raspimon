@@ -8,6 +8,13 @@
 // ParseOptions() when -d/--debug is passed
 bool want_debug = false;
 
+// Whether to emit ANSI color codes; main() decides at startup
+bool use_color = false;
+
+const char* Color(const char* color) {
+  return use_color ? color : "";
+}
+
 namespace {
   // The board revision code, pushed in by main() at startup. It's the
   // "new-style" bitfield (same value as /proc/cpuinfo's Revision line):
@@ -50,12 +57,17 @@ std::optional<double> ParseDouble(const std::string& in) {
 void PrintOutHeader(std::ostream& out, const std::string& title) {
   std::string line = "--------" + title;
   line.resize(33, '-');
-  out << line << kEndLine;
+  out << Color(kColorHeader) << line << Color(kColorReset) << kEndLine;
 }
 
 void PrintOutEntry(std::ostream& out, const std::string& name, const std::string& value,
-                   int width) {
-  out << "  " << std::left << std::setw(width) << name << ": " << value << kEndLine;
+                   int width, const char* value_color) {
+  // The color codes go AROUND the setw() field, never inside it: setw
+  // pads by byte count, and escape codes are bytes with zero visible
+  // width, so a code inside the field would shrink the padding
+  out << "  " << Color(kColorLabel) << std::left << std::setw(width) << name
+      << Color(kColorReset) << ": " << Color(value_color) << value << Color(kColorReset)
+      << kEndLine;
 }
 
 // Handles SIGINT (Ctrl+C) and SIGTERM (polite kill) - POSIX signals are

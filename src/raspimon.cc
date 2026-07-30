@@ -186,7 +186,7 @@ bool GetInfo(const Mbox& mbox, const int max_lines) {
   std::ostringstream out;
 
   PrintOutHeader(out, "Model");
-  out << "  " << GetPiModelName() << kEndLine;
+  out << "  " << Color(kColorValue) << GetPiModelName() << Color(kColorReset) << kEndLine;
 
   PrintOutHeader(out, "Clock Frequencies");
   for (const Sensor& clock : kClocks) {
@@ -246,7 +246,15 @@ bool GetInfo(const Mbox& mbox, const int max_lines) {
   } else {
     degrees << *celsius << " " << kDegreeSymbol << "C.";
   }
-  PrintOutEntry(out, "SOC Temp", degrees.str(), kLabelWidth);
+  // Color the reading by how hot the chip is: the firmware begins soft
+  // throttling at 80C (hard limit 85C), so red means "throttling territory"
+  const char* temp_color = kColorValue;
+  if (*celsius >= 80.0) {
+    temp_color = kColorAlert;
+  } else if (*celsius >= 65.0) {
+    temp_color = kColorWarn;
+  }
+  PrintOutEntry(out, "SOC Temp", degrees.str(), kLabelWidth, temp_color);
   if (IsPi5()) {
     // The Pi 5's dedicated fan header reports the fan's tachometer through
     // the kernel; the row only appears when a fan is actually plugged in
@@ -361,6 +369,7 @@ void ShowHelp() {
                "  -t, --time <seconds>   Refresh every <seconds> seconds (default 1)\n"
                "  -f, --fahrenheit       Display temperatures in Fahrenheit\n"
                "  -d, --debug            Print extra debug output to stderr\n"
+               "  -n, --no-color         Disable colored output (NO_COLOR env works too)\n"
                "  -v, --version          Show program version\n"
                "  -h, --help             Show this help message\n"
                "\n"
@@ -394,11 +403,12 @@ std::optional<int> ParseOptions(int argc, char* argv[], std::chrono::millisecond
       {"time", required_argument, nullptr, 't'},
       {"fahrenheit", no_argument, nullptr, 'f'},
       {"debug", no_argument, nullptr, 'd'},
+      {"no-color", no_argument, nullptr, 'n'},
       {"version", no_argument, nullptr, 'v'},
       {"help", no_argument, nullptr, 'h'},
       {nullptr, 0, nullptr, 0}, // all-zeros terminator marks the table's end
   };
-  while ((opt = getopt_long(argc, argv, "t:fdvh", kLongOptions, nullptr)) != -1) {
+  while ((opt = getopt_long(argc, argv, "t:fdnvh", kLongOptions, nullptr)) != -1) {
     switch (opt) {
       case 't': {
         double seconds = 0.0;
@@ -418,6 +428,9 @@ std::optional<int> ParseOptions(int argc, char* argv[], std::chrono::millisecond
       case 'd':
         want_debug = true;
         break;
+      case 'n':
+        use_color = false;
+        break;
       case 'f':
         use_fahrenheit = true;
         break;
@@ -436,6 +449,11 @@ std::optional<int> ParseOptions(int argc, char* argv[], std::chrono::millisecond
 }
 
 int main(int argc, char* argv[]) {
+  // Color only when a human is looking: stdout must be a terminal, and
+  // the NO_COLOR convention (no-color.org) can veto it via the
+  // environment, as can --no-color during parsing below
+  use_color = isatty(STDOUT_FILENO) && std::getenv("NO_COLOR") == nullptr;
+
   std::chrono::milliseconds delay = kDefaultDelayMs;
   // A returned value means a flag already did its job (-h/-v printed) or
   // the command line was invalid; either way, quit with that exit code
