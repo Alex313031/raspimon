@@ -1,0 +1,140 @@
+#!/bin/bash
+
+# Copyright (c) 2026 Alex313031
+
+set -euo pipefail
+
+YEL='\033[1;33m' # Yellow
+CYA='\033[1;96m' # Cyan
+RED='\033[1;31m' # Red
+GRE='\033[1;32m' # Green
+C0='\033[0;00m'  # Reset Text
+BOLD='\033[1;37m' # Bold Text
+underline='\033[4m' # Underline Text
+
+# Error handling
+yell() { echo -e "$0: $*" >&2; }
+die()  { yell "${RED}$* ${C0}"; exit 1; }
+try() { "$@" || die "${RED}Failed $*"; }
+
+SCRIPTNAME=$(basename "$0")
+SCRIPTVER="1.0.0"
+
+export HERE=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+
+# pinctrl pokes GPIO registers directly and apt installs packages, so both
+# need root; prefix sudo only when not already running as root
+SUDO=""
+if [ "$(id -u)" -ne 0 ]; then
+  SUDO="sudo"
+fi
+
+show_help() {
+  cat <<EOF
+Usage:
+  $SCRIPTNAME [options]
+
+Control the official fan on a Raspberry Pi 5.
+With no command, shows the current fan speed (RPM).
+
+Commands:
+  on            Run the fan at full speed
+  off           Turn the fan off
+  auto          Return the fan to the firmware's automatic control
+  --deps        Install dependencies (raspberrypi-utils, provides pinctrl)
+  -h, --help    Show this help
+  --version     Show script version
+
+EOF
+
+  exit 0
+}
+
+show_version() {
+  printf "\n ${BOLD} %s Version %s ${C0}\n\n" "$SCRIPTNAME" "$SCRIPTVER"
+  exit 0
+}
+
+install_deps() {
+  if ! command -v apt-get >/dev/null; then
+    die "--deps only supports apt-based systems (Ubuntu/Debian); install the prerequisites manually"
+  fi
+  printf "${GRE}Installing dependencies for %s...${C0}\n" "$SCRIPTNAME"
+  # raspberrypi-utils provides pinctrl, which the fan commands drive
+  $SUDO apt-get update || die "apt-get update failed"
+  $SUDO apt-get install -y raspberrypi-utils || die "Failed to install dependencies"
+  printf "${GRE}Done installing dependencies!${C0}\n"
+}
+
+# FAN_PWM is the Pi 5 fan header's PWM line, and it is active-low: driven
+# high the fan stops, driven low it runs flat out, and a0 hands the pin
+# back to the firmware's automatic fan curve. pinctrl only knows the
+# FAN_PWM name on BCM2712 boards, so these commands are Pi 5 family only
+need_pinctrl() {
+  command -v pinctrl >/dev/null || die "pinctrl not found - run '$SCRIPTNAME --deps' to install it"
+}
+
+fan_off() {
+  need_pinctrl
+  printf "${RED} Turning fan OFF ${C0}\n"
+  $SUDO pinctrl FAN_PWM op dh
+}
+
+fan_on() {
+  need_pinctrl
+  printf "${YEL} Turning fan on full speed ${C0}\n"
+  $SUDO pinctrl FAN_PWM op dl
+}
+
+fan_auto() {
+  need_pinctrl
+  printf "${GRE} Restoring fan to auto speed ${C0}\n"
+  $SUDO pinctrl FAN_PWM a0
+}
+
+show_fan_speed() {
+  local rpm
+  rpm=$(cat /sys/devices/platform/cooling_fan/hwmon/*/fan1_input 2>/dev/null) ||
+    die "No fan found (is the official fan plugged into the fan header?)"
+  printf "${GRE} Fan Speed: ${BOLD} %s RPM ${C0}\n" "$rpm"
+}
+
+while :; do
+  case ${1-} in
+    -h|--help)
+        show_help
+        ;;
+    --version)
+        show_version
+        ;;
+    --deps)
+        install_deps
+        exit 0
+        ;;
+    off|-off|--off)
+        fan_off
+        exit 0
+        ;;
+    on|-on|--on)
+        fan_on
+        exit 0
+        ;;
+    auto|-auto|--auto)
+        fan_auto
+        exit 0
+        ;;
+    --)
+        shift
+        break
+        ;;
+    -?*)
+        die "Unknown option '$1'"
+        ;;
+    *)
+        show_fan_speed
+        break
+  esac
+  shift
+done
+
+exit 0
