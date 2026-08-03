@@ -1,5 +1,5 @@
-#ifndef RASPIMON_GENCMD_H_
-#define RASPIMON_GENCMD_H_
+#ifndef LIBRASPIMON_GENCMD_H_
+#define LIBRASPIMON_GENCMD_H_
 
 #include "pch.h"
 
@@ -54,4 +54,4 @@ class Mbox {
 // Public Helper for VideoCoreGenCommand
 std::optional<std::string> QueryCmd(const Mbox& mbox, const std::string& command);
 
-#endif // RASPIMON_GENCMD_H_
+#endif // LIBRASPIMON_GENCMD_H_

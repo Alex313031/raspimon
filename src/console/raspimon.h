@@ -1,30 +1,9 @@
 #ifndef RASPIMON_RASPIMON_H_
 #define RASPIMON_RASPIMON_H_
 
-#include "gencmd.h"
 #include "pch.h"
 
-// These next few lines are where we control version number
-// Adhere to semver -> semver.org
-#define MAJOR_VERSION 1
-#define MINOR_VERSION 1
-#define BUILD_VERSION 0
-
-#define COPYRIGHT_YEAR "2026" // For ShowVersion()
-
-// Macro to convert to string
-#if !defined(STRINGIZE)
- #define STRINGIZER_(in) #in
- #define STRINGIZE(in)   STRINGIZER_(in)
-#endif // !defined(STRINGIZE)
-
-// Main version constants
-#ifndef VERSION_
- // Run stringizer above
- #define VERSION_(major, minor, build) STRINGIZE(major.minor.build)
- // Version string
- #define VERSION_STRING VERSION_(MAJOR_VERSION, MINOR_VERSION, BUILD_VERSION)
-#endif // VERSION_
+#include <libraspimon.h>
 
 inline constexpr char kAppName[] = "raspimon"; // name of the app
 

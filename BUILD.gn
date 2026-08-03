@@ -2,30 +2,116 @@
 
 # raspimon BUILD.gn file.
 
-executable("raspimon") {
+declare_args() {
+  # Whether the frontends link the shared libraspimon.so instead of the
+  # static archive (both library flavors always build). Set with
+  # `gn gen out --args="shared_libraspimon=true"`. Note: GN has no
+  # statement terminators - a trailing ';' here is a syntax error
+  shared_libraspimon = false
+}
+
+group("raspimon_all") {
+  # Labels in the same file need the leading ':' (a bare name would be
+  # read as a path to another BUILD.gn file)
+  deps = [
+    ":libraspimon_shared",
+    ":libraspimon_static",
+    ":raspimon",
+    ":raspimon_gui",
+  ]
+}
+
+# One source list, two library flavors below. Both set output_name
+# "raspimon" so the artifacts come out as libraspimon.a / libraspimon.so
+libraspimon_sources = [
+  "src/libraspimon/gencmd.cc",
+  "src/libraspimon/gencmd.h",
+  "src/libraspimon/libraspimon.h",
+  "src/libraspimon/pch.h",
+  "src/libraspimon/utils.cc",
+  "src/libraspimon/utils.h",
+]
+
+static_library("libraspimon_static") {
   configs += [ ":raspimon_config" ]
 
-  # GCC-style PCH: GN precompiles precompiled_source (the header itself) into
-  # a .gch and force-includes it into every compile. precompiled_header is
-  # only read by MSVC-style PCH toolchains - which would also need a pch.cc
-  # as the /Yc source; GCC-style needs no source file, hence none exists.
-  precompiled_header = "src/pch.h"
-  precompiled_source = "src/pch.h"
-  sources = [
-    "src/gencmd.cc",
-    "src/gencmd.h",
-    "src/pch.h",
-    "src/raspimon.cc",
-    "src/raspimon.h",
-    "src/utils.cc",
-    "src/utils.h",
-  ]
+  # GCC-style PCH: GN precompiles precompiled_source (the header itself)
+  # into a .gch and force-includes it into every compile
+  precompiled_header = "src/libraspimon/pch.h"
+  precompiled_source = "src/libraspimon/pch.h"
+  sources = libraspimon_sources
 
   output_name = "raspimon"
 }
 
+shared_library("libraspimon_shared") {
+  configs += [ ":raspimon_config" ]
+
+  defines = [ "LIBRASPIMON_SHARED=1" ]
+
+  precompiled_header = "src/libraspimon/pch.h"
+  precompiled_source = "src/libraspimon/pch.h"
+  sources = libraspimon_sources
+
+  output_name = "raspimon"
+}
+
+executable("raspimon") {
+  configs += [ ":raspimon_config" ]
+
+  precompiled_header = "src/console/pch.h"
+  precompiled_source = "src/console/pch.h"
+  sources = [
+    "src/console/console_utils.cc",
+    "src/console/console_utils.h",
+    "src/console/pch.h",
+    "src/console/raspimon.cc",
+    "src/console/raspimon.h",
+  ]
+  include_dirs = [ "./src/console" ]
+
+  if (shared_libraspimon) {
+    deps = [ ":libraspimon_shared" ]
+  } else {
+    deps = [ ":libraspimon_static" ]
+  }
+
+  output_name = "raspimon"
+}
+
+executable("raspimon_gui") {
+  configs += [
+    ":raspimon_config",
+
+    # NOTE: this config only exists in a Chromium-style checkout (it wraps
+    # pkg-config gtk+-3.0); a standalone GN setup needs a local config
+    # providing the same cflags/libs
+    "//build/config/linux:gtk",
+  ]
+
+  precompiled_header = "src/gui/pch.h"
+  precompiled_source = "src/gui/pch.h"
+  sources = [
+    "src/gui/gui_utils.cc",
+    "src/gui/gui_utils.h",
+    "src/gui/pch.h",
+    "src/gui/raspimon_gui.cc",
+    "src/gui/raspimon_gui.h",
+  ]
+  include_dirs = [ "./src/gui" ]
+
+  if (shared_libraspimon) {
+    deps = [ ":libraspimon_shared" ]
+  } else {
+    deps = [ ":libraspimon_static" ]
+  }
+
+  output_name = "raspimon-gui"
+}
+
 config("raspimon_config") {
-  include_dirs = [ "./src" ]
+  include_dirs = [ "./src/libraspimon" ]
+  cflags_c = [ "-std=c17", ]
   cflags_cc = [ "-std=c++17", ]
 
   # Mirror the Makefile's IS_DEBUG defines; `is_debug` is GN's standard
@@ -35,4 +121,6 @@ config("raspimon_config") {
   } else {
     defines = [ "NDEBUG", "_NDEBUG" ]
   }
+
+  libs = [ "m" ]
 }

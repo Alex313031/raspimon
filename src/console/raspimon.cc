@@ -14,7 +14,7 @@
 
 #include "raspimon.h"
 
-#include "utils.h"
+#include "console_utils.h"
 
 // Whether to display temperatures in Fahrenheit (-f)
 static bool use_fahrenheit = false;
@@ -377,7 +377,7 @@ void ShowHelp() {
 }
 
 void ShowVersion() {
-  static constexpr char app_ver[] = VERSION_STRING;
+  static constexpr char app_ver[] = RASPIMON_VERSION_STRING;
   std::cout << kAppName << " v" << app_ver << std::endl;
   std::cout << "Copyright " << kCopyrightSymbol << " " << COPYRIGHT_YEAR << " Alex313031."
             << std::endl;
