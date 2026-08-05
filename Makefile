@@ -51,10 +51,14 @@ GTK_LIBS   := $(shell pkg-config --libs gtk+-3.0)
 # SHARED_LIBRASPIMON=1 builds and links libraspimon.so instead of the
 # static archive; the $ORIGIN rpath means "next to the binary", so a
 # shipped frontend + .so pair runs from any directory. Library objects
-# are always compiled -fPIC so one object set serves both flavors
+# are always compiled -fPIC, but the LIBRASPIMON_SHARED define below is
+# baked into every object, and make can't see a mode change - run
+# `make clean` when switching flavors or the stale objects will
+# misreport their linkage in -v/About output
 ifeq ($(SHARED_LIBRASPIMON),1)
   LIBRASPIMON   := libraspimon.so
   RASPIMON_LINK := -L. -lraspimon -Wl,-rpath,'$$ORIGIN'
+  CPPFLAGS += -DLIBRASPIMON_SHARED=1
 else
   LIBRASPIMON    := libraspimon.a
   RASPIMON_LINK  := libraspimon.a

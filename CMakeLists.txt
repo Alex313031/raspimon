@@ -72,6 +72,7 @@ if(SHARED_LIBRASPIMON)
   # $ORIGIN = "the directory the binary is in": a shipped raspimon +
   # libraspimon.so pair works side by side
   set_target_properties(raspimon PROPERTIES BUILD_RPATH "\$ORIGIN")
+  target_compile_definitions(raspimon PRIVATE LIBRASPIMON_SHARED=1)
 else()
   # Only the static-library console build can be fully static, like the
   # old single-file raspimon was (LINK_FLAGS, not target_link_options,
@@ -93,6 +94,7 @@ if(GTK3_FOUND)
   target_link_libraries(raspimon-gui libraspimon ${GTK3_LIBRARIES} m)
   if(SHARED_LIBRASPIMON)
     set_target_properties(raspimon-gui PROPERTIES BUILD_RPATH "\$ORIGIN")
+    target_compile_definitions(raspimon-gui PRIVATE LIBRASPIMON_SHARED=1)
   endif()
 else()
   message(WARNING "GTK3 dev files not found (libgtk-3-dev); skipping raspimon-gui")

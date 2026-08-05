@@ -332,15 +332,23 @@ namespace {
     AppState* state       = static_cast<AppState*>(data);
     GtkWidget* dialog     = gtk_about_dialog_new();
     GtkAboutDialog* about = GTK_ABOUT_DIALOG(dialog);
+    gtk_about_dialog_set_logo(about, nullptr); // No icon for now.
     gtk_about_dialog_set_program_name(about, "Raspimon GUI");
-    gtk_about_dialog_set_version(about, "v" RASPIMON_GUI_VERSION);
-    gtk_about_dialog_set_copyright(about, "Copyright © " COPYRIGHT_YEAR " Alex313031.");
+    gtk_about_dialog_set_version(about, "Version " RASPIMON_GUI_VERSION);
     // Literal pasting ("a" "b") only works between literals; the library
     // version arrives at runtime, so join with std::string instead
     const std::string comments =
-        std::string("A small system monitor for Raspberry Pi, using libraspimon v") +
+        std::string("A small system monitor for Raspberry Pi.\n") +
+#ifdef LIBRASPIMON_SHARED
+        std::string("Using (shared) libraspimon v") +
+#else
+        std::string("Built with libraspimon v") +
+#endif
         GetLibRaspiMonVersion();
     gtk_about_dialog_set_comments(about, comments.c_str());
+    gtk_about_dialog_set_license_type(about, GTK_LICENSE_BSD_3);
+    gtk_about_dialog_set_website(about, "https://github.com/Alex313031/raspimon");
+    gtk_about_dialog_set_copyright(about, "Copyright © " COPYRIGHT_YEAR " Alex313031.");
     // Transient-for centers the dialog over the main window and keeps it
     // on top of it, like a Win32 owned window
     gtk_window_set_transient_for(GTK_WINDOW(dialog), state->window);

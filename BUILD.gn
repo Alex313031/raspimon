@@ -71,6 +71,8 @@ executable("raspimon") {
   include_dirs = [ "./src/console" ]
 
   if (shared_libraspimon) {
+    # Lets ShowVersion() report "Using (shared)" instead of "Built with"
+    defines = [ "LIBRASPIMON_SHARED=1" ]
     deps = [ ":libraspimon_shared" ]
   } else {
     deps = [ ":libraspimon_static" ]
@@ -101,6 +103,8 @@ executable("raspimon_gui") {
   include_dirs = [ "./src/gui" ]
 
   if (shared_libraspimon) {
+    # Lets the About dialog report "Using (shared)" instead of "Built with"
+    defines = [ "LIBRASPIMON_SHARED=1" ]
     deps = [ ":libraspimon_shared" ]
   } else {
     deps = [ ":libraspimon_static" ]

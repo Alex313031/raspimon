@@ -11,7 +11,7 @@
 // Adhere to semver -> semver.org
 #define LIBRASPIMON_MAJOR_VERSION 1
 #define LIBRASPIMON_MINOR_VERSION 1
-#define LIBRASPIMON_BUILD_VERSION 1
+#define LIBRASPIMON_BUILD_VERSION 2
 
 // Macro to convert to string
 #if !defined(STRINGIZE)

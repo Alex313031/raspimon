@@ -10,7 +10,7 @@
 // Adhere to semver -> semver.org
 #define RASPIMON_MAJOR 1
 #define RASPIMON_MINOR 1
-#define RASPIMON_BUILD 2
+#define RASPIMON_BUILD 3
 
 #define COPYRIGHT_YEAR "2026" // For ShowVersion()
 

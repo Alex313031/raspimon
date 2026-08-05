@@ -380,9 +380,13 @@ void ShowVersion() {
   static constexpr char app_ver[] = RASPIMON_VERSION;
   const char* lib_ver             = GetLibRaspiMonVersion();
   std::cout << kAppName << " v" << app_ver << std::endl;
-  std::cout << "libraspimon v" << lib_ver << std::endl;
-  std::cout << "Copyright " << kCopyrightSymbol << " " << COPYRIGHT_YEAR << " Alex313031."
-            << std::endl;
+#ifdef LIBRASPIMON_SHARED
+  std::cout << "Using (shared) libraspimon v" << lib_ver << std::endl;
+#else
+  std::cout << "Built with libraspimon v" << lib_ver << std::endl;
+#endif
+  std::cout << "Copyright " << kCopyrightSymbol << " " << COPYRIGHT_YEAR
+            << " Alex313031. (BSD-3 License)" << std::endl;
 }
 
 std::optional<int> ParseOptions(int argc, char* argv[], std::chrono::milliseconds& delay) {
