@@ -20,14 +20,34 @@ Mbox::Mbox() {
   // CreateFile() on a "\\.\DeviceName" path). Needs root or membership
   // in the `video` group. O_RDONLY = read-only access mode
   constexpr std::array<const char*, 2> kDevices{"/dev/vcio_gencmd", "/dev/vcio"};
+  bool denied    = false;
+  int last_error = 0;
   for (const char* device : kDevices) {
     file_desc = open(device, O_RDONLY);
     if (file_desc >= 0) {
       return;
     }
+    // errno says WHY open() failed (the Win32 analog is GetLastError()
+    // after CreateFile), and the next open() overwrites it - capture now.
+    // If either device exists but refuses us, it's a permissions story
+    last_error = errno;
+    if (last_error == EACCES || last_error == EPERM) {
+      denied = true;
+    }
   }
-  throw std::runtime_error(std::string("can't open device file ") + kDevices.back() +
-                           " (are you running on a Raspberry Pi 2/3/4/5?)");
+  // "You may not touch the device" and "there is no such device" need
+  // very different advice, so tell them apart instead of one catch-all
+  if (denied) {
+    throw std::runtime_error(std::string("permission denied opening ") + kDevices.back() +
+                             " - run with sudo, or add your user to the video group\n"
+                             "(sudo usermod -aG video $USER, then log out and back in)");
+  }
+  if (last_error == ENOENT) {
+    throw std::runtime_error(std::string("can't open device file ") + kDevices.back() +
+                             " (are you running on a Raspberry Pi 2/3/4/5?)");
+  }
+  throw std::runtime_error(std::string("can't open device file ") + kDevices.back() + ": " +
+                           std::strerror(last_error));
 }
 
 Mbox::~Mbox() {

@@ -56,4 +56,8 @@ std::optional<MemInfo> GetKernelMemInfo();
 // fan on the Pi 5's dedicated fan header; std::nullopt if no fan is there
 std::optional<long long> GetFanRpm();
 
+// The library's version ("1.1.1") as a runtime call. This way, consumers
+// can log the library version separate from their own version.
+const char* GetLibRaspiMonVersion();
+
 #endif // LIBRASPIMON_UTILS_H_

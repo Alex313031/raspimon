@@ -16,8 +16,10 @@ Thumbs.db
 # Build output dir
 /out/
 
-# Executable built by make
+# Executables built by make
+/libraspimon.so
 /raspimon
+/raspimon-gui
 
 # Kept for reference source code
 /reference

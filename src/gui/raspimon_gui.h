@@ -1,9 +1,33 @@
 #ifndef RASPIMON_RASPIMON_GUI_H_
 #define RASPIMON_RASPIMON_GUI_H_
 
+#include <libraspimon.h>
+
 #include "pch.h"
 
-#include <libraspimon.h>
+// These next few lines are where we control the GUI frontend's own
+// version number, independent of libraspimon's (the About dialog shows both).
+// Adhere to semver -> semver.org
+#define RASPIMON_GUI_MAJOR 1
+#define RASPIMON_GUI_MINOR 1
+#define RASPIMON_GUI_BUILD 2
+
+#define COPYRIGHT_YEAR "2026" // For the About dialog
+
+// Macro to convert to string
+#if !defined(STRINGIZE)
+ #define STRINGIZER_(in) #in
+ #define STRINGIZE(in)   STRINGIZER_(in)
+#endif // !defined(STRINGIZE)
+
+// Main version constants
+#ifndef VERSION_
+ // Run stringizer above
+ #define VERSION_(major, minor, build) STRINGIZE(major.minor.build)
+#endif // VERSION_
+
+// Version string
+#define RASPIMON_GUI_VERSION VERSION_(RASPIMON_GUI_MAJOR, RASPIMON_GUI_MINOR, RASPIMON_GUI_BUILD)
 
 inline constexpr char kAppName[] = "raspimon-gui"; // name of the app
 

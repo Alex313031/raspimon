@@ -5,14 +5,13 @@
 // (mailbox/gencmd) and the kernel's hardware interfaces. Consumers should
 // include only this header.
 
-// These next few lines are where we control the version number, which is
-// global: the frontends report the library's version as their own.
+// These next few lines are where we control the library's own version
+// number - each frontend now carries its own, and can report ours at
+// runtime via GetLibRaspiMonVersion().
 // Adhere to semver -> semver.org
-#define MAJOR_VERSION 1
-#define MINOR_VERSION 1
-#define BUILD_VERSION 1
-
-#define COPYRIGHT_YEAR "2026" // For ShowVersion()
+#define LIBRASPIMON_MAJOR_VERSION 1
+#define LIBRASPIMON_MINOR_VERSION 1
+#define LIBRASPIMON_BUILD_VERSION 1
 
 // Macro to convert to string
 #if !defined(STRINGIZE)
@@ -24,9 +23,11 @@
 #ifndef VERSION_
  // Run stringizer above
  #define VERSION_(major, minor, build) STRINGIZE(major.minor.build)
- // Version string
- #define RASPIMON_VERSION_STRING VERSION_(MAJOR_VERSION, MINOR_VERSION, BUILD_VERSION)
 #endif // VERSION_
+
+// Version string
+#define LIBRASPIMON_VERSION_STRING \
+  VERSION_(LIBRASPIMON_MAJOR_VERSION, LIBRASPIMON_MINOR_VERSION, LIBRASPIMON_BUILD_VERSION)
 
 // When built as a shared library, public symbols get default visibility
 // explicitly (a no-op unless -fvisibility=hidden is ever turned on)

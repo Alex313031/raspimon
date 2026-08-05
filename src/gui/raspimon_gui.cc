@@ -13,6 +13,9 @@
 
 #include "gui_utils.h"
 
+// Whether to display temperatures in Fahrenheit (Options > Fahrenheit)
+static bool use_fahrenheit = false;
+
 namespace {
   // Clocks queried with `measure_clock`
   constexpr std::array<Sensor, 13> kClocks{{
@@ -87,9 +90,8 @@ namespace {
   // firmware's isp clock just echoes the core clock there); emmc2, the
   // Pi 4's real SD-card controller, only answers on a Pi 4
   bool SkipClock(const Sensor& clock) {
-    if (IsPi5() &&
-        (std::strcmp(clock.arg, "pwm") == 0 || std::strcmp(clock.arg, "h264") == 0 ||
-         std::strcmp(clock.arg, "isp") == 0)) {
+    if (IsPi5() && (std::strcmp(clock.arg, "pwm") == 0 || std::strcmp(clock.arg, "h264") == 0 ||
+                    std::strcmp(clock.arg, "isp") == 0)) {
       return true;
     }
     if (!IsPi4() && std::strcmp(clock.arg, "emmc2") == 0) {
@@ -249,7 +251,12 @@ bool RenderDashboard(GtkTextBuffer* buffer, const Mbox& mbox) {
     temp_tag = "warn";
   }
   std::ostringstream degrees;
-  degrees << std::fixed << std::setprecision(1) << *celsius << " " << kDegreeSymbol << "C.";
+  degrees << std::fixed << std::setprecision(1);
+  if (use_fahrenheit) {
+    degrees << (*celsius * 9.0 / 5.0 + 32.0) << " " << kDegreeSymbol << "F.";
+  } else {
+    degrees << *celsius << " " << kDegreeSymbol << "C.";
+  }
   AppendEntry(buffer, "SOC Temp", degrees.str(), temp_tag);
   if (IsPi5()) {
     // The row only appears when a fan is actually plugged in
@@ -293,6 +300,7 @@ namespace {
   struct AppState {
     Mbox* mbox;
     GtkTextBuffer* buffer;
+    GtkWindow* window;
   };
 
   gboolean RefreshTick(gpointer data) {
@@ -303,6 +311,41 @@ namespace {
       AppendTagged(state->buffer, "\nVideoCore query failed.\n", "alert");
     }
     return G_SOURCE_CONTINUE; // keep the timer firing
+  }
+
+  // File > Exit (Ctrl+Q): ends the gtk_main() loop, which lets main()
+  // fall through and return - the GTK analog of PostQuitMessage()
+  void OnExit(GtkMenuItem*, gpointer) {
+    gtk_main_quit();
+  }
+
+  // Options > Fahrenheit: flip the unit, then repaint immediately rather
+  // than letting the stale unit sit on screen until the next timer tick
+  void OnFahrenheitToggled(GtkCheckMenuItem* item, gpointer data) {
+    use_fahrenheit = gtk_check_menu_item_get_active(item);
+    RefreshTick(data);
+  }
+
+  // About > About (F1): the stock GTK about dialog - the GUI's own
+  // version up top, the library's version reported in the comments line
+  void OnAbout(GtkMenuItem*, gpointer data) {
+    AppState* state       = static_cast<AppState*>(data);
+    GtkWidget* dialog     = gtk_about_dialog_new();
+    GtkAboutDialog* about = GTK_ABOUT_DIALOG(dialog);
+    gtk_about_dialog_set_program_name(about, "Raspimon GUI");
+    gtk_about_dialog_set_version(about, "v" RASPIMON_GUI_VERSION);
+    gtk_about_dialog_set_copyright(about, "Copyright © " COPYRIGHT_YEAR " Alex313031.");
+    // Literal pasting ("a" "b") only works between literals; the library
+    // version arrives at runtime, so join with std::string instead
+    const std::string comments =
+        std::string("A small system monitor for Raspberry Pi, using libraspimon v") +
+        GetLibRaspiMonVersion();
+    gtk_about_dialog_set_comments(about, comments.c_str());
+    // Transient-for centers the dialog over the main window and keeps it
+    // on top of it, like a Win32 owned window
+    gtk_window_set_transient_for(GTK_WINDOW(dialog), state->window);
+    gtk_dialog_run(GTK_DIALOG(dialog));
+    gtk_widget_destroy(dialog);
   }
 } // namespace
 
@@ -328,13 +371,12 @@ int main(int argc, char* argv[]) {
   }
 
   GtkWidget* window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-  gtk_window_set_title(GTK_WINDOW(window), "Raspimon v" RASPIMON_VERSION_STRING);
+  gtk_window_set_title(GTK_WINDOW(window), "Raspimon GUI v" RASPIMON_GUI_VERSION);
   gtk_window_set_default_size(GTK_WINDOW(window), CW_WIDTH, CW_HEIGHT); // resizable by default
   g_signal_connect(window, "destroy", G_CALLBACK(gtk_main_quit), nullptr);
 
   GtkWidget* vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
   gtk_container_add(GTK_CONTAINER(window), vbox);
-  gtk_box_pack_start(GTK_BOX(vbox), BuildMenuBar(), FALSE, FALSE, 0);
 
   // The dashboard: a read-only monospace text view in a scrolled window,
   // so shrinking the window scrolls instead of truncating
@@ -345,14 +387,24 @@ int main(int argc, char* argv[]) {
   gtk_text_view_set_monospace(GTK_TEXT_VIEW(view), TRUE);
   gtk_text_view_set_left_margin(GTK_TEXT_VIEW(view), 8);
   gtk_container_add(GTK_CONTAINER(scroller), view);
-  gtk_box_pack_start(GTK_BOX(vbox), scroller, TRUE, TRUE, 0);
 
   GtkTextBuffer* buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(view));
   CreateDashboardTags(buffer);
 
-  // First frame immediately, then one per delay; static so the pointer
-  // handed to GLib stays valid for the program's whole life
-  static AppState state{mbox, buffer};
+  // Static so the pointer handed to GLib callbacks stays valid for the
+  // program's whole life
+  static AppState state{mbox, buffer, GTK_WINDOW(window)};
+
+  // The accel group is what routes Ctrl+Q / F1 to the menu items; the
+  // menu bar is packed first so it sits above the dashboard
+  GtkAccelGroup* accel_group = gtk_accel_group_new();
+  gtk_window_add_accel_group(GTK_WINDOW(window), accel_group);
+  GtkWidget* menu_bar = BuildMenuBar(accel_group, G_CALLBACK(OnExit),
+                                     G_CALLBACK(OnFahrenheitToggled), G_CALLBACK(OnAbout), &state);
+  gtk_box_pack_start(GTK_BOX(vbox), menu_bar, FALSE, FALSE, 0);
+  gtk_box_pack_start(GTK_BOX(vbox), scroller, TRUE, TRUE, 0);
+
+  // First frame immediately, then one per delay
   RefreshTick(&state);
   g_timeout_add(kDefaultDelayMs, RefreshTick, &state);
 

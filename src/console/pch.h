@@ -7,20 +7,20 @@
 // in every console translation unit)
 
 // C++ Runtime Headers
-#include <array>     // std::array
-#include <cerrno>    // errno and the E* error constants (like GetLastError() codes)
-#include <chrono>    // std::chrono::milliseconds
-#include <csignal>   // std::signal() and the SIG* constants
-#include <cstdlib>   // EXIT_SUCCESS / EXIT_FAILURE, std::getenv()
-#include <cstring>   // std::strcmp()
-#include <iomanip>   // std::setw(), std::setprecision()
-#include <iostream>  // std::cout / std::cerr
-#include <optional>  // std::optional
-#include <sstream>   // std::ostringstream / std::istringstream
-#include <string>    // std::string
-#include <thread>    // std::this_thread::sleep_for()
-#include <utility>   // std::pair
-#include <vector>    // std::vector
+#include <array>    // std::array
+#include <cerrno>   // errno and the E* error constants (like GetLastError() codes)
+#include <chrono>   // std::chrono::milliseconds
+#include <csignal>  // std::signal() and the SIG* constants
+#include <cstdlib>  // EXIT_SUCCESS / EXIT_FAILURE, std::getenv()
+#include <cstring>  // std::strcmp()
+#include <iomanip>  // std::setw(), std::setprecision()
+#include <iostream> // std::cout / std::cerr
+#include <optional> // std::optional
+#include <sstream>  // std::ostringstream / std::istringstream
+#include <string>   // std::string
+#include <thread>   // std::this_thread::sleep_for()
+#include <utility>  // std::pair
+#include <vector>   // std::vector
 
 // Linux system headers
 #include <getopt.h>    // getopt_long() and struct option, for parsing --long flags

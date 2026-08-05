@@ -377,8 +377,10 @@ void ShowHelp() {
 }
 
 void ShowVersion() {
-  static constexpr char app_ver[] = RASPIMON_VERSION_STRING;
+  static constexpr char app_ver[] = RASPIMON_VERSION;
+  const char* lib_ver             = GetLibRaspiMonVersion();
   std::cout << kAppName << " v" << app_ver << std::endl;
+  std::cout << "libraspimon v" << lib_ver << std::endl;
   std::cout << "Copyright " << kCopyrightSymbol << " " << COPYRIGHT_YEAR << " Alex313031."
             << std::endl;
 }

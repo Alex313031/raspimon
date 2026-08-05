@@ -6,7 +6,8 @@
 
 // C++ Runtime Headers
 #include <array>     // std::array
-#include <cstring>   // std::memcpy(), strnlen()
+#include <cerrno>    // errno and the E* error constants (like GetLastError() codes)
+#include <cstring>   // std::memcpy(), strnlen(), std::strerror()
 #include <fstream>   // std::ifstream, for reading /proc and /sys files
 #include <iostream>  // std::cerr (debug/error output)
 #include <optional>  // std::optional

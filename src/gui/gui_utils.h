@@ -3,10 +3,17 @@
 
 #include "pch.h"
 
-// Builds the classic in-window ("Win32 style") menu bar with File,
-// Options, and About menus - their submenus are empty placeholders for
-// now, to be populated later
-GtkWidget* BuildMenuBar();
+// Builds the classic in-window ("Win32 style") menu bar:
+//   File    > Exit        (Ctrl+Q)  -> `on_exit`, "activate" signal
+//   Options > Fahrenheit  (toggle)  -> `on_fahrenheit`, "toggled" signal
+//   About   > About       (F1)      -> `on_about`, "activate" signal
+// `accel_group` must already be added to the window (that's what routes
+// the keyboard shortcuts); every callback receives `user_data`
+GtkWidget* BuildMenuBar(GtkAccelGroup* accel_group,
+                        GCallback on_exit,
+                        GCallback on_fahrenheit,
+                        GCallback on_about,
+                        gpointer user_data);
 
 // Registers the dashboard's text color tags on `buffer`. Roles mirror the
 // console frontend's ANSI palette; colors are chosen to stay readable on

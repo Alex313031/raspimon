@@ -19,7 +19,7 @@ export CLANG_FORMAT_FILE=${HERE}/.clang-format &&
 printf "${GRE} Clang formatting using ${CLANG_FORMAT_FILE} ${c0}\n" &&
 
 printf "${CYA} clang-format src/ ${c0}\n" &&
-# Main source
-clang-format --verbose -i --style=file:${CLANG_FORMAT_FILE} ${HERE}/src/{*.h,*.cc} &&
+# Main source (each component lives in its own subdir since the 1.1.1 split)
+clang-format --verbose -i --style=file:${CLANG_FORMAT_FILE} ${HERE}/src/*/{*.h,*.cc} &&
 
 exit 0

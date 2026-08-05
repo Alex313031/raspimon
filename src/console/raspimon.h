@@ -1,9 +1,33 @@
 #ifndef RASPIMON_RASPIMON_H_
 #define RASPIMON_RASPIMON_H_
 
+#include <libraspimon.h>
+
 #include "pch.h"
 
-#include <libraspimon.h>
+// These next few lines are where we control the console frontend's own
+// version number, independent of libraspimon's (ShowVersion() prints both).
+// Adhere to semver -> semver.org
+#define RASPIMON_MAJOR 1
+#define RASPIMON_MINOR 1
+#define RASPIMON_BUILD 2
+
+#define COPYRIGHT_YEAR "2026" // For ShowVersion()
+
+// Macro to convert to string
+#if !defined(STRINGIZE)
+ #define STRINGIZER_(in) #in
+ #define STRINGIZE(in)   STRINGIZER_(in)
+#endif // !defined(STRINGIZE)
+
+// Main version constants
+#ifndef VERSION_
+ // Run stringizer above
+ #define VERSION_(major, minor, build) STRINGIZE(major.minor.build)
+#endif // VERSION_
+
+// Version string
+#define RASPIMON_VERSION VERSION_(RASPIMON_MAJOR, RASPIMON_MINOR, RASPIMON_BUILD)
 
 inline constexpr char kAppName[] = "raspimon"; // name of the app
 

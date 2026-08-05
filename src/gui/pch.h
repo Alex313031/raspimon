@@ -20,6 +20,7 @@
 
 // GTK headers (we target the plain GTK3 C API for maximum compatibility;
 // gtkmm, the C++ wrapper, is a separate much heavier dependency)
-#include <gtk/gtk.h> // Baseline GTK header
+#include <gdk/gdkkeysyms.h> // GDK_KEY_* codes for menu accelerators
+#include <gtk/gtk.h>        // Baseline GTK header
 
 #endif // RASPIMON_GUI_PCH_H_

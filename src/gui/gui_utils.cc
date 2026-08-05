@@ -5,16 +5,51 @@
 
 #include "gui_utils.h"
 
-GtkWidget* BuildMenuBar() {
-  GtkWidget* bar = gtk_menu_bar_new();
-  constexpr std::array<const char*, 3> kMenus{"File", "Options", "About"};
-  for (const char* name : kMenus) {
-    GtkWidget* item = gtk_menu_item_new_with_label(name);
-    // Attach an empty submenu so each title drops down (to nothing, for
-    // now); menu entries come later
-    gtk_menu_item_set_submenu(GTK_MENU_ITEM(item), gtk_menu_new());
+namespace {
+  // Makes one top-level menu ("File") on `bar` and returns its (empty)
+  // submenu for items to be appended to
+  GtkWidget* AddMenu(GtkWidget* bar, const char* title) {
+    GtkWidget* menu = gtk_menu_new();
+    GtkWidget* item = gtk_menu_item_new_with_label(title);
+    gtk_menu_item_set_submenu(GTK_MENU_ITEM(item), menu);
     gtk_menu_shell_append(GTK_MENU_SHELL(bar), item);
+    return menu;
   }
+} // namespace
+
+GtkWidget* BuildMenuBar(GtkAccelGroup* accel_group,
+                        GCallback on_exit,
+                        GCallback on_fahrenheit,
+                        GCallback on_about,
+                        gpointer user_data) {
+  GtkWidget* bar = gtk_menu_bar_new();
+
+  // File > Exit (Ctrl+Q). gtk_widget_add_accelerator() both routes the
+  // keystroke to the item's "activate" signal and renders the shortcut
+  // right-aligned in the menu (GTK_ACCEL_VISIBLE), Win32 style
+  GtkWidget* file_menu = AddMenu(bar, "File");
+  GtkWidget* exit_item = gtk_menu_item_new_with_label("Exit");
+  gtk_widget_add_accelerator(exit_item, "activate", accel_group, GDK_KEY_q, GDK_CONTROL_MASK,
+                             GTK_ACCEL_VISIBLE);
+  g_signal_connect(exit_item, "activate", on_exit, user_data);
+  gtk_menu_shell_append(GTK_MENU_SHELL(file_menu), exit_item);
+
+  // Options > Fahrenheit: a check item, GTK's menu checkbox - it tracks
+  // its own checked state and emits "toggled" on every flip
+  GtkWidget* options_menu    = AddMenu(bar, "Options");
+  GtkWidget* fahrenheit_item = gtk_check_menu_item_new_with_label("Fahrenheit");
+  g_signal_connect(fahrenheit_item, "toggled", on_fahrenheit, user_data);
+  gtk_menu_shell_append(GTK_MENU_SHELL(options_menu), fahrenheit_item);
+
+  // About > About (F1) - function keys take no modifier, hence the 0,
+  // which C++ makes us spell as a cast into the enum type
+  GtkWidget* about_menu = AddMenu(bar, "About");
+  GtkWidget* about_item = gtk_menu_item_new_with_label("About");
+  gtk_widget_add_accelerator(about_item, "activate", accel_group, GDK_KEY_F1,
+                             static_cast<GdkModifierType>(0), GTK_ACCEL_VISIBLE);
+  g_signal_connect(about_item, "activate", on_about, user_data);
+  gtk_menu_shell_append(GTK_MENU_SHELL(about_menu), about_item);
+
   return bar;
 }
 
